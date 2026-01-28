@@ -309,4 +309,174 @@ class DatabaseHelper {
     print('Fetched daily totals for last $days days: ${results.length} days');
     return results;
   }
+
+  // ========== DETAILED ANALYTICS METHODS ==========
+
+  /// Get spending analysis by hour of day using strftime
+  /// Returns Map<int, double> where key is hour (0-23) and value is total spending
+  Future<Map<int, double>> getSpendingByHour() async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        CAST(strftime('%H', date) AS INTEGER) as hour,
+        SUM(amount) as total
+      FROM transactions
+      WHERE isIncome = 0
+      GROUP BY hour
+      ORDER BY hour ASC
+      ''',
+    );
+    
+    final Map<int, double> hourlySpending = {};
+    for (final row in results) {
+      final hour = row['hour'] as int;
+      final total = (row['total'] as num).toDouble();
+      hourlySpending[hour] = total;
+    }
+    
+    print('Fetched spending by hour: ${hourlySpending.length} hours with data');
+    return hourlySpending;
+  }
+
+  /// Get spending analysis by day of week using strftime
+  /// Returns Map<int, double> where key is day (0=Sunday, 6=Saturday) and value is total spending
+  Future<Map<int, double>> getSpendingByDayOfWeek() async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        CAST(strftime('%w', date) AS INTEGER) as day_of_week,
+        SUM(amount) as total
+      FROM transactions
+      WHERE isIncome = 0
+      GROUP BY day_of_week
+      ORDER BY day_of_week ASC
+      ''',
+    );
+    
+    final Map<int, double> dailySpending = {};
+    for (final row in results) {
+      final day = row['day_of_week'] as int;
+      final total = (row['total'] as num).toDouble();
+      dailySpending[day] = total;
+    }
+    
+    print('Fetched spending by day of week: ${dailySpending.length} days with data');
+    return dailySpending;
+  }
+
+  /// Get category analysis with percentage contribution using CTE
+  /// Returns list of categories sorted by spending with percentage of total
+  Future<List<Map<String, dynamic>>> getCategoryAnalysis() async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      WITH monthly_expenses AS (
+        SELECT 
+          category,
+          SUM(amount) as category_total,
+          strftime('%Y-%m', date) as month
+        FROM transactions
+        WHERE isIncome = 0
+          AND date >= date('now', '-30 days')
+        GROUP BY category, month
+      ),
+      total_monthly AS (
+        SELECT 
+          SUM(category_total) as overall_total,
+          month
+        FROM monthly_expenses
+        GROUP BY month
+      )
+      SELECT 
+        me.category,
+        SUM(me.category_total) as total_amount,
+        ROUND(
+          (SUM(me.category_total) * 100.0) / 
+          (SELECT SUM(overall_total) FROM total_monthly),
+          2
+        ) as percentage
+      FROM monthly_expenses me
+      GROUP BY me.category
+      ORDER BY total_amount DESC
+      ''',
+    );
+    
+    print('Fetched category analysis: ${results.length} categories');
+    return results;
+  }
+
+  /// Get top spending categories (simplified version)
+  /// Returns list of {category, total, count} sorted by total spending
+  Future<List<Map<String, dynamic>>> getTopCategories({int limit = 10}) async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        category,
+        SUM(amount) as total,
+        COUNT(*) as count
+      FROM transactions
+      WHERE isIncome = 0
+      GROUP BY category
+      ORDER BY total DESC
+      LIMIT ?
+      ''',
+      [limit],
+    );
+    
+    print('Fetched top $limit categories');
+    return results;
+  }
+
+  /// Get spending trends over time (monthly aggregation)
+  Future<List<Map<String, dynamic>>> getMonthlySpendingTrend({int months = 6}) async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        strftime('%Y-%m', date) as month,
+        SUM(CASE WHEN isIncome = 0 THEN amount ELSE 0 END) as expenses,
+        SUM(CASE WHEN isIncome = 1 THEN amount ELSE 0 END) as income,
+        COUNT(CASE WHEN isIncome = 0 THEN 1 END) as expense_count,
+        COUNT(CASE WHEN isIncome = 1 THEN 1 END) as income_count
+      FROM transactions
+      WHERE date >= date('now', '-$months months')
+      GROUP BY month
+      ORDER BY month ASC
+      ''',
+    );
+    
+    print('Fetched monthly spending trend for last $months months');
+    return results;
+  }
+
+  /// Get total expenses and income for a specific period
+  Future<Map<String, double>> getTotalsByPeriod({
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        SUM(CASE WHEN isIncome = 0 THEN amount ELSE 0 END) as total_expenses,
+        SUM(CASE WHEN isIncome = 1 THEN amount ELSE 0 END) as total_income
+      FROM transactions
+      WHERE date(date) BETWEEN date(?) AND date(?)
+      ''',
+      [startDate.toIso8601String(), endDate.toIso8601String()],
+    );
+    
+    if (results.isNotEmpty) {
+      final row = results.first;
+      return {
+        'expenses': ((row['total_expenses'] ?? 0) as num).toDouble(),
+        'income': ((row['total_income'] ?? 0) as num).toDouble(),
+      };
+    }
+    
+    return {'expenses': 0.0, 'income': 0.0};
+  }
 }

@@ -8,7 +8,7 @@ import '../services/database_helper.dart';
 import '../services/recurring_payment_service.dart';
 import '../widgets/floating_transaction_form.dart';
 import '../utils/csv_export.dart';
-import 'insights_tab.dart';
+import 'analysis_tab.dart';
 import 'recurring_transactions_tab.dart';
 import 'settings_tab.dart';
 
@@ -91,7 +91,7 @@ class _HomePageState extends State<HomePage>
           opacity: 0.9,
           enableAnimateToEdge: true,
           enableBottomShadow: true,
-          keepAliveWhenAppExit: false,
+          keepAliveWhenAppExit: true,
         ),
         onTap: () {
           print('Bubble tapped - setting flag and bringing app to foreground');
@@ -205,7 +205,7 @@ class _HomePageState extends State<HomePage>
           tabs: const [
             Tab(icon: Icon(Icons.list), text: 'Transactions'),
             Tab(icon: Icon(Icons.repeat), text: 'Recurring'),
-            Tab(icon: Icon(Icons.insights), text: 'Insights'),
+            Tab(icon: Icon(Icons.analytics), text: 'Analysis'),
             Tab(icon: Icon(Icons.settings), text: 'Settings'),
           ],
         ),
@@ -257,7 +257,7 @@ class _HomePageState extends State<HomePage>
         children: [
           _buildTransactionsTab(),
           const RecurringTransactionsTab(),
-          const InsightsTab(),
+          const AnalysisTab(),
           SettingsTab(
             onDatabaseRestored: () {
               if (mounted) {
@@ -310,48 +310,44 @@ class _HomePageState extends State<HomePage>
           return SafeArea(
             child: Column(
               children: [
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        // Search and Filter Section
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                          child: Column(
-                            children: [
-                              // Search Bar
-                              TextField(
-                                controller: _searchController,
-                                decoration: InputDecoration(
-                                  hintText: 'Search transactions...',
-                                  prefixIcon: const Icon(Icons.search),
-                                  suffixIcon: _searchQuery.isNotEmpty
-                                      ? IconButton(
-                                          icon: const Icon(Icons.clear),
-                                          onPressed: () {
-                                            _searchController.clear();
-                                            setState(() {
-                                              _searchQuery = '';
-                                            });
-                                          },
-                                        )
-                                      : null,
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  filled: true,
-                                  fillColor: const Color(0xFF1E1E2E),
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _searchQuery = value;
-                                  });
-                                },
-                              ),
-                              const SizedBox(height: 8),
-                              // Date Filter Row
-                              Row(
-                                children: [
+                // Search and Filter Section
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Column(
+                    children: [
+                      // Search Bar
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search transactions...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchQuery.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchController.clear();
+                                    setState(() {
+                                      _searchQuery = '';
+                                    });
+                                  },
+                                )
+                              : null,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          filled: true,
+                          fillColor: const Color(0xFF1E1E2E),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _searchQuery = value;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      // Date Filter Row
+                      Row(
+                        children: [
                           Expanded(
                             child: OutlinedButton.icon(
                               onPressed: () => _selectDateRange(context),

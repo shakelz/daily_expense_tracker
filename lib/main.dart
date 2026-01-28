@@ -33,6 +33,7 @@ class MyApp extends StatelessWidget {
 
     return MaterialApp(
       title: 'My Expense Tracker',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,

@@ -23,28 +23,80 @@ class _AnalysisTabState extends State<AnalysisTab> {
   // New: MoM and Top 5 expenses data
   Map<String, dynamic> _momData = {};
   List<Map<String, dynamic>> _top5Expenses = [];
+  
+  // Filter state variables
+  DateTime? _filterStartDate;
+  DateTime? _filterEndDate;
+  String? _selectedCategory;
+  List<String> _allCategories = [];
+  bool _hasActiveFilter = false;
 
   @override
   void initState() {
     super.initState();
+    _loadCategories();
     _loadAnalytics();
+  }
+
+  /// Load all available categories for filter chips
+  Future<void> _loadCategories() async {
+    try {
+      final categories = await _dbHelper.getAllCategories();
+      setState(() {
+        _allCategories = categories;
+      });
+    } catch (e) {
+      print('Error loading categories: $e');
+    }
   }
 
   Future<void> _loadAnalytics() async {
     setState(() => _isLoading = true);
     
     try {
-      // Fetch transactions
-      final transactionMaps = await _dbHelper.getAllTransactions();
+      // Fetch transactions (either filtered or all)
+      final transactionMaps = _hasActiveFilter
+          ? await _dbHelper.queryTransactionsFiltered(
+              startDate: _filterStartDate,
+              endDate: _filterEndDate,
+              category: _selectedCategory,
+            )
+          : await _dbHelper.getAllTransactions();
+      
       final transactions = transactionMaps
           .map((map) => ExpenseEntry.fromMap(map))
           .toList();
       
-      // Fetch analytics data
-      final hourly = await _dbHelper.getSpendingByHour();
-      final categories = await _dbHelper.getCategoryAnalysis();
-      final momData = await _dbHelper.getMonthOverMonthComparison();
-      final top5 = await _dbHelper.getTop5Expenses();
+      // Fetch analytics data (using filtered methods)
+      final hourly = _hasActiveFilter
+          ? await _dbHelper.getSpendingByHourFiltered(
+              startDate: _filterStartDate,
+              endDate: _filterEndDate,
+              category: _selectedCategory,
+            )
+          : await _dbHelper.getSpendingByHour();
+      
+      final categories = _hasActiveFilter
+          ? await _dbHelper.getCategoryAnalysisFiltered(
+              startDate: _filterStartDate,
+              endDate: _filterEndDate,
+              category: _selectedCategory,
+            )
+          : await _dbHelper.getCategoryAnalysis();
+      
+      final momData = _hasActiveFilter
+          ? await _dbHelper.getMonthOverMonthComparisonFiltered(
+              category: _selectedCategory,
+            )
+          : await _dbHelper.getMonthOverMonthComparison();
+      
+      final top5 = _hasActiveFilter
+          ? await _dbHelper.getTop5ExpensesFiltered(
+              startDate: _filterStartDate,
+              endDate: _filterEndDate,
+              category: _selectedCategory,
+            )
+          : await _dbHelper.getTop5Expenses();
       
       // Calculate totals
       double income = 0;
@@ -83,36 +135,393 @@ class _AnalysisTabState extends State<AnalysisTab> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadAnalytics,
-      color: const Color(0xFF7C4DFF),
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ========== SUMMARY SECTION ==========
-            _buildSummarySection(),
-            const SizedBox(height: 32),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Analysis'),
+        backgroundColor: const Color(0xFF0F1115),
+        elevation: 0,
+        actions: [
+          // Filter button
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Center(
+              child: GestureDetector(
+                onTap: _showFilterBottomSheet,
+                child: Stack(
+                  children: [
+                    const Icon(Icons.filter_list, color: Color(0xFF7C4DFF)),
+                    // Red dot indicator if filter is active
+                    if (_hasActiveFilter)
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.redAccent,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _loadAnalytics,
+        color: const Color(0xFF7C4DFF),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ========== ACTIVE FILTER INDICATOR ==========
+              if (_hasActiveFilter)
+                _buildActiveFilterIndicator(),
+              if (_hasActiveFilter) const SizedBox(height: 16),
 
-            // ========== PIE CHART SECTION ==========
-            _buildPieChartSection(),
-            const SizedBox(height: 32),
+              // ========== SUMMARY SECTION ==========
+              _buildSummarySection(),
+              const SizedBox(height: 32),
 
-            // ========== HOURLY SPENDING CHART ==========
-            _buildHourlyChartSection(),
-            const SizedBox(height: 32),
+              // ========== PIE CHART SECTION ==========
+              _buildPieChartSection(),
+              const SizedBox(height: 32),
 
-            // ========== TOP 5 EXPENSES ==========
-            _buildTop5ExpensesSection(),
-            const SizedBox(height: 32),
+              // ========== HOURLY SPENDING CHART ==========
+              _buildHourlyChartSection(),
+              const SizedBox(height: 32),
 
-            // ========== RECENT TRANSACTIONS ==========
-            _buildRecentTransactionsSection(),
-            const SizedBox(height: 24),
-          ],
+              // ========== TOP 5 EXPENSES ==========
+              _buildTop5ExpensesSection(),
+              const SizedBox(height: 32),
+
+              // ========== RECENT TRANSACTIONS ==========
+              _buildRecentTransactionsSection(),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+
+  /// Show the filter bottom sheet
+  void _showFilterBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E2E),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      isScrollControlled: true,
+      builder: (context) => _buildFilterBottomSheet(),
+    );
+  }
+
+  /// Build the filter bottom sheet widget
+  Widget _buildFilterBottomSheet() {
+    return DraggableScrollableSheet(
+      expand: false,
+      builder: (context, scrollController) => SingleChildScrollView(
+        controller: scrollController,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Filter Transactions',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  // Reset button
+                  TextButton(
+                    onPressed: _resetFilters,
+                    child: const Text(
+                      'Reset',
+                      style: TextStyle(
+                        color: Colors.orangeAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Date Presets Section
+              const Text(
+                'Date Range',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Preset buttons
+              Wrap(
+                spacing: 8,
+                children: [
+                  _buildDatePresetButton('Today', _setFilterToday),
+                  _buildDatePresetButton('This Week', _setFilterThisWeek),
+                  _buildDatePresetButton('This Month', _setFilterThisMonth),
+                  _buildDatePresetButton('Custom', _setFilterCustom),
+                ],
+              ),
+
+              // Selected date range display
+              if (_filterStartDate != null && _filterEndDate != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 12),
+                  child: Text(
+                    '${_filterStartDate!.day}/${_filterStartDate!.month}/${_filterStartDate!.year} - ${_filterEndDate!.day}/${_filterEndDate!.month}/${_filterEndDate!.year}',
+                    style: const TextStyle(
+                      color: Color(0xFF7C4DFF),
+                      fontSize: 13,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 24),
+
+              // Category Section
+              const Text(
+                'Categories',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Category chips
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  // "All" option
+                  FilterChip(
+                    label: const Text('All'),
+                    selected: _selectedCategory == null,
+                    onSelected: (selected) {
+                      setState(() {
+                        _selectedCategory = null;
+                      });
+                    },
+                    backgroundColor: const Color(0xFF2E2E3E),
+                    selectedColor: const Color(0xFF7C4DFF),
+                    labelStyle: TextStyle(
+                      color: _selectedCategory == null
+                          ? Colors.white
+                          : Colors.white,
+                    ),
+                  ),
+                  // Individual categories
+                  ..._allCategories.map((category) {
+                    return FilterChip(
+                      label: Text(category),
+                      selected: _selectedCategory == category,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedCategory = selected ? category : null;
+                        });
+                      },
+                      backgroundColor: const Color(0xFF2E2E3E),
+                      selectedColor: const Color(0xFF7C4DFF),
+                      labelStyle: const TextStyle(color: Colors.white),
+                    );
+                  }),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Apply button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7C4DFF),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: _applyFilters,
+                  child: const Text(
+                    'Apply Filter',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build date preset button
+  Widget _buildDatePresetButton(String label, VoidCallback onPressed) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        side: const BorderSide(color: Color(0xFF7C4DFF)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(color: Color(0xFF7C4DFF)),
+      ),
+    );
+  }
+
+  /// Set filter to today
+  void _setFilterToday() {
+    final now = DateTime.now();
+    setState(() {
+      _filterStartDate = DateTime(now.year, now.month, now.day);
+      _filterEndDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    });
+  }
+
+  /// Set filter to this week
+  void _setFilterThisWeek() {
+    final now = DateTime.now();
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    setState(() {
+      _filterStartDate = DateTime(weekStart.year, weekStart.month, weekStart.day);
+      _filterEndDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    });
+  }
+
+  /// Set filter to this month
+  void _setFilterThisMonth() {
+    final now = DateTime.now();
+    setState(() {
+      _filterStartDate = DateTime(now.year, now.month, 1);
+      _filterEndDate = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+    });
+  }
+
+  /// Set custom date filter (shows date picker)
+  void _setFilterCustom() async {
+    final startDate = await showDatePicker(
+      context: context,
+      initialDate: _filterStartDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+    );
+
+    if (startDate != null && mounted) {
+      final endDate = await showDatePicker(
+        context: context,
+        initialDate: _filterEndDate ?? DateTime.now(),
+        firstDate: startDate,
+        lastDate: DateTime.now(),
+      );
+
+      if (endDate != null && mounted) {
+        setState(() {
+          _filterStartDate = startDate;
+          _filterEndDate = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+        });
+      }
+    }
+  }
+
+  /// Reset all filters
+  void _resetFilters() {
+    setState(() {
+      _filterStartDate = null;
+      _filterEndDate = null;
+      _selectedCategory = null;
+      _hasActiveFilter = false;
+    });
+    Navigator.pop(context);
+    _loadAnalytics();
+  }
+
+  /// Apply filters and refresh data
+  void _applyFilters() {
+    setState(() {
+      _hasActiveFilter = (_filterStartDate != null && _filterEndDate != null) ||
+          (_selectedCategory != null && _selectedCategory!.isNotEmpty);
+    });
+    Navigator.pop(context);
+    _loadAnalytics();
+  }
+
+  /// Build active filter indicator badge
+  Widget _buildActiveFilterIndicator() {
+    List<String> filterLabels = [];
+
+    if (_filterStartDate != null && _filterEndDate != null) {
+      final start = _filterStartDate!;
+      final end = _filterEndDate!;
+      filterLabels.add(
+        '${start.day}/${start.month} - ${end.day}/${end.month}',
+      );
+    }
+
+    if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
+      filterLabels.add(_selectedCategory!);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF7C4DFF).withOpacity(0.2),
+        border: Border.all(color: const Color(0xFF7C4DFF), width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.filter_list, color: Color(0xFF7C4DFF), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Filtered: ${filterLabels.join(', ')}',
+              style: const TextStyle(
+                color: Color(0xFF7C4DFF),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: _resetFilters,
+            child: const Icon(Icons.close, color: Color(0xFF7C4DFF), size: 18),
+          ),
+        ],
       ),
     );
   }

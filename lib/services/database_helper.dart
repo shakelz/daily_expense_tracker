@@ -591,4 +591,285 @@ class DatabaseHelper {
     print('Fetched top 5 expenses: ${results.length} transactions');
     return results;
   }
+
+  /// Get all unique categories from transactions
+  /// Used for filter chips in the Analysis Tab
+  Future<List<String>> getAllCategories() async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT DISTINCT category
+      FROM transactions
+      ORDER BY category ASC
+      ''',
+    );
+    
+    final categories = results.map((row) => row['category'] as String).toList();
+    print('Fetched ${categories.length} unique categories');
+    return categories;
+  }
+
+  /// Query transactions with optional filtering by date range and category
+  /// Parameters:
+  ///   - startDate: Start date (inclusive) for filtering
+  ///   - endDate: End date (inclusive) for filtering
+  ///   - category: Specific category to filter (null = all categories)
+  /// Returns: List of filtered transactions
+  Future<List<Map<String, dynamic>>> queryTransactionsFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? category,
+  }) async {
+    final db = await database;
+    
+    String query = 'SELECT * FROM transactions WHERE 1=1';
+    final params = <dynamic>[];
+    
+    // Add date range filter if provided
+    if (startDate != null && endDate != null) {
+      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    // Add category filter if provided
+    if (category != null && category.isNotEmpty) {
+      query += ' AND category = ?';
+      params.add(category);
+    }
+    
+    // Sort by date DESC (newest first)
+    query += ' ORDER BY date DESC';
+    
+    final results = await db.rawQuery(query, params);
+    
+    print('Fetched ${results.length} filtered transactions');
+    print('  Filter: startDate=$startDate, endDate=$endDate, category=$category');
+    
+    return results;
+  }
+
+  /// Get filtered spending by hour (for hourly chart with filters)
+  Future<Map<int, double>> getSpendingByHourFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? category,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT 
+        CAST(strftime('%H', date) AS INTEGER) as hour,
+        SUM(amount) as total
+      FROM transactions
+      WHERE isIncome = 0
+    ''';
+    final params = <dynamic>[];
+    
+    if (startDate != null && endDate != null) {
+      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    if (category != null && category.isNotEmpty) {
+      query += ' AND category = ?';
+      params.add(category);
+    }
+    
+    query += ' GROUP BY hour ORDER BY hour ASC';
+    
+    final results = await db.rawQuery(query, params);
+    
+    // Convert to map, filling missing hours with 0
+    final hourlyMap = <int, double>{};
+    for (int h = 0; h < 24; h++) {
+      hourlyMap[h] = 0.0;
+    }
+    
+    for (final row in results) {
+      final hour = (row['hour'] as int);
+      final total = ((row['total'] ?? 0) as num).toDouble();
+      hourlyMap[hour] = total;
+    }
+    
+    print('Fetched filtered hourly spending: ${results.length} hours with data');
+    return hourlyMap;
+  }
+
+  /// Get filtered category analysis with percentages
+  Future<List<Map<String, dynamic>>> getCategoryAnalysisFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? category,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      WITH filtered_expenses AS (
+        SELECT category, amount
+        FROM transactions
+        WHERE isIncome = 0
+    ''';
+    final params = <dynamic>[];
+    
+    if (startDate != null && endDate != null) {
+      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    if (category != null && category.isNotEmpty) {
+      query += ' AND category = ?';
+      params.add(category);
+    }
+    
+    query += '''
+      ),
+      category_totals AS (
+        SELECT 
+          category,
+          SUM(amount) as total_amount
+        FROM filtered_expenses
+        GROUP BY category
+      ),
+      total_expenses AS (
+        SELECT SUM(total_amount) as grand_total FROM category_totals
+      )
+      SELECT 
+        ct.category,
+        ct.total_amount,
+        ROUND((ct.total_amount * 100.0) / te.grand_total, 2) as percentage
+      FROM category_totals ct, total_expenses te
+      WHERE te.grand_total > 0
+      ORDER BY ct.total_amount DESC
+    ''';
+    
+    final results = await db.rawQuery(query, params);
+    
+    print('Fetched filtered category analysis: ${results.length} categories');
+    return results;
+  }
+
+  /// Get filtered top 5 expenses
+  Future<List<Map<String, dynamic>>> getTop5ExpensesFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+    String? category,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT 
+        id,
+        title,
+        amount,
+        category,
+        date,
+        isIncome
+      FROM transactions
+      WHERE isIncome = 0
+    ''';
+    final params = <dynamic>[];
+    
+    if (startDate != null && endDate != null) {
+      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    if (category != null && category.isNotEmpty) {
+      query += ' AND category = ?';
+      params.add(category);
+    }
+    
+    query += ' ORDER BY amount DESC LIMIT 5';
+    
+    final results = await db.rawQuery(query, params);
+    
+    print('Fetched filtered top 5 expenses: ${results.length} transactions');
+    return results;
+  }
+
+  /// Get MoM comparison with optional filters
+  Future<Map<String, dynamic>> getMonthOverMonthComparisonFiltered({
+    String? category,
+  }) async {
+    final db = await database;
+    
+    final now = DateTime.now();
+    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final previousMonth = DateTime(now.year, now.month - 1).month == 0
+        ? '${now.year - 1}-12'
+        : '${now.year}-${(now.month - 1).toString().padLeft(2, '0')}';
+    
+    String whereClause = '';
+    final params = <dynamic>[];
+    
+    if (category != null && category.isNotEmpty) {
+      whereClause = ' AND category = ?';
+      params.add(category);
+    }
+    
+    final currentResults = await db.rawQuery(
+      '''
+      SELECT 
+        SUM(CASE WHEN isIncome = 1 THEN amount ELSE 0 END) as income,
+        SUM(CASE WHEN isIncome = 0 THEN amount ELSE 0 END) as expense
+      FROM transactions
+      WHERE strftime('%Y-%m', date) = ?
+      $whereClause
+      ''',
+      [currentMonth, ...params],
+    );
+    
+    final previousResults = await db.rawQuery(
+      '''
+      SELECT 
+        SUM(CASE WHEN isIncome = 1 THEN amount ELSE 0 END) as income,
+        SUM(CASE WHEN isIncome = 0 THEN amount ELSE 0 END) as expense
+      FROM transactions
+      WHERE strftime('%Y-%m', date) = ?
+      $whereClause
+      ''',
+      [previousMonth, ...params],
+    );
+    
+    final currentIncome = currentResults.isNotEmpty
+        ? ((currentResults.first['income'] ?? 0) as num).toDouble()
+        : 0.0;
+    final currentExpense = currentResults.isNotEmpty
+        ? ((currentResults.first['expense'] ?? 0) as num).toDouble()
+        : 0.0;
+    
+    final previousIncome = previousResults.isNotEmpty
+        ? ((previousResults.first['income'] ?? 0) as num).toDouble()
+        : 0.0;
+    final previousExpense = previousResults.isNotEmpty
+        ? ((previousResults.first['expense'] ?? 0) as num).toDouble()
+        : 0.0;
+    
+    double incomePercentChange = 0.0;
+    if (previousIncome > 0) {
+      incomePercentChange = ((currentIncome - previousIncome) / previousIncome) * 100;
+    } else if (currentIncome > 0) {
+      incomePercentChange = 100.0;
+    }
+    
+    double expensePercentChange = 0.0;
+    if (previousExpense > 0) {
+      expensePercentChange = ((currentExpense - previousExpense) / previousExpense) * 100;
+    } else if (currentExpense > 0) {
+      expensePercentChange = 100.0;
+    }
+    
+    return {
+      'current_income': currentIncome,
+      'current_expense': currentExpense,
+      'previous_income': previousIncome,
+      'previous_expense': previousExpense,
+      'income_percent_change': incomePercentChange,
+      'expense_percent_change': expensePercentChange,
+    };
+  }
 }

@@ -479,4 +479,116 @@ class DatabaseHelper {
     
     return {'expenses': 0.0, 'income': 0.0};
   }
+
+  /// Get Month-over-Month (MoM) comparison: current vs previous month
+  /// Returns: {
+  ///   'current_income': double,
+  ///   'current_expense': double,
+  ///   'previous_income': double,
+  ///   'previous_expense': double,
+  ///   'income_percent_change': double (positive = increase),
+  ///   'expense_percent_change': double (positive = increase)
+  /// }
+  Future<Map<String, dynamic>> getMonthOverMonthComparison() async {
+    final db = await database;
+    
+    // Get current month (YYYY-MM)
+    final now = DateTime.now();
+    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    final previousMonth = DateTime(now.year, now.month - 1).month == 0
+        ? '${now.year - 1}-12'
+        : '${now.year}-${(now.month - 1).toString().padLeft(2, '0')}';
+    
+    // Query: Current month totals
+    final currentResults = await db.rawQuery(
+      '''
+      SELECT 
+        SUM(CASE WHEN isIncome = 1 THEN amount ELSE 0 END) as income,
+        SUM(CASE WHEN isIncome = 0 THEN amount ELSE 0 END) as expense
+      FROM transactions
+      WHERE strftime('%Y-%m', date) = ?
+      ''',
+      [currentMonth],
+    );
+    
+    // Query: Previous month totals
+    final previousResults = await db.rawQuery(
+      '''
+      SELECT 
+        SUM(CASE WHEN isIncome = 1 THEN amount ELSE 0 END) as income,
+        SUM(CASE WHEN isIncome = 0 THEN amount ELSE 0 END) as expense
+      FROM transactions
+      WHERE strftime('%Y-%m', date) = ?
+      ''',
+      [previousMonth],
+    );
+    
+    final currentIncome = currentResults.isNotEmpty
+        ? ((currentResults.first['income'] ?? 0) as num).toDouble()
+        : 0.0;
+    final currentExpense = currentResults.isNotEmpty
+        ? ((currentResults.first['expense'] ?? 0) as num).toDouble()
+        : 0.0;
+    
+    final previousIncome = previousResults.isNotEmpty
+        ? ((previousResults.first['income'] ?? 0) as num).toDouble()
+        : 0.0;
+    final previousExpense = previousResults.isNotEmpty
+        ? ((previousResults.first['expense'] ?? 0) as num).toDouble()
+        : 0.0;
+    
+    // Calculate % change (handle divide by zero)
+    double incomePercentChange = 0.0;
+    if (previousIncome > 0) {
+      incomePercentChange = ((currentIncome - previousIncome) / previousIncome) * 100;
+    } else if (currentIncome > 0) {
+      incomePercentChange = 100.0; // 0 → positive = 100% increase
+    }
+    
+    double expensePercentChange = 0.0;
+    if (previousExpense > 0) {
+      expensePercentChange = ((currentExpense - previousExpense) / previousExpense) * 100;
+    } else if (currentExpense > 0) {
+      expensePercentChange = 100.0; // 0 → positive = 100% increase
+    }
+    
+    print('MoM Comparison:');
+    print('  Current: Income €$currentIncome, Expense €$currentExpense');
+    print('  Previous: Income €$previousIncome, Expense €$previousExpense');
+    print('  Income % Change: ${incomePercentChange.toStringAsFixed(1)}%');
+    print('  Expense % Change: ${expensePercentChange.toStringAsFixed(1)}%');
+    
+    return {
+      'current_income': currentIncome,
+      'current_expense': currentExpense,
+      'previous_income': previousIncome,
+      'previous_expense': previousExpense,
+      'income_percent_change': incomePercentChange,
+      'expense_percent_change': expensePercentChange,
+    };
+  }
+
+  /// Get Top 5 most expensive transactions
+  /// Returns: List of {id, title, amount, category, date, isIncome}
+  Future<List<Map<String, dynamic>>> getTop5Expenses() async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        id,
+        title,
+        amount,
+        category,
+        date,
+        isIncome
+      FROM transactions
+      WHERE isIncome = 0
+      ORDER BY amount DESC
+      LIMIT 5
+      ''',
+    );
+    
+    print('Fetched top 5 expenses: ${results.length} transactions');
+    return results;
+  }
 }

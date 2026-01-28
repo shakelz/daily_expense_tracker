@@ -19,6 +19,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
   double _totalIncome = 0;
   double _totalExpense = 0;
   bool _isLoading = true;
+  
+  // New: MoM and Top 5 expenses data
+  Map<String, dynamic> _momData = {};
+  List<Map<String, dynamic>> _top5Expenses = [];
 
   @override
   void initState() {
@@ -39,6 +43,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
       // Fetch analytics data
       final hourly = await _dbHelper.getSpendingByHour();
       final categories = await _dbHelper.getCategoryAnalysis();
+      final momData = await _dbHelper.getMonthOverMonthComparison();
+      final top5 = await _dbHelper.getTop5Expenses();
       
       // Calculate totals
       double income = 0;
@@ -57,6 +63,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
         _categoryAnalysis = categories;
         _totalIncome = income;
         _totalExpense = expense;
+        _momData = momData;
+        _top5Expenses = top5;
         _isLoading = false;
       });
     } catch (e) {
@@ -96,6 +104,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
             _buildHourlyChartSection(),
             const SizedBox(height: 32),
 
+            // ========== TOP 5 EXPENSES ==========
+            _buildTop5ExpensesSection(),
+            const SizedBox(height: 32),
+
             // ========== RECENT TRANSACTIONS ==========
             _buildRecentTransactionsSection(),
             const SizedBox(height: 24),
@@ -107,6 +119,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
 
   Widget _buildSummarySection() {
     final balance = _totalIncome - _totalExpense;
+    final incomePercentChange = _momData['income_percent_change'] as double? ?? 0.0;
+    final expensePercentChange = _momData['expense_percent_change'] as double? ?? 0.0;
     
     return Column(
       children: [
@@ -126,6 +140,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
                 amount: _totalIncome,
                 color: Colors.greenAccent,
                 icon: Icons.arrow_downward,
+                momPercentChange: incomePercentChange,
+                isMomPositive: incomePercentChange >= 0,
               ),
             ),
             const SizedBox(width: 12),
@@ -135,6 +151,8 @@ class _AnalysisTabState extends State<AnalysisTab> {
                 amount: _totalExpense,
                 color: Colors.redAccent,
                 icon: Icons.arrow_upward,
+                momPercentChange: expensePercentChange,
+                isMomPositive: expensePercentChange <= 0, // Lower expenses is good
               ),
             ),
           ],
@@ -424,6 +442,134 @@ class _AnalysisTabState extends State<AnalysisTab> {
     );
   }
 
+  Widget _buildTop5ExpensesSection() {
+    if (_top5Expenses.isEmpty) {
+      return Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(
+            child: Text(
+              'No expense data yet.\nAdd transactions to see top expenses.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.trending_up, color: Color(0xFF7C4DFF)),
+                const SizedBox(width: 8),
+                Text(
+                  'Top 5 Expenses',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            ..._top5Expenses.asMap().entries.map((entry) {
+              final index = entry.key;
+              final expense = entry.value;
+              final title = expense['title'] as String;
+              final amount = ((expense['amount'] ?? 0) as num).toDouble();
+              final category = expense['category'] as String;
+              final dateStr = expense['date'] as String;
+              
+              // Parse date
+              final date = DateTime.tryParse(dateStr) ?? DateTime.now();
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    // Rank badge
+                    Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF7C4DFF).withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF7C4DFF),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Category icon + title
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            category,
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Amount
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '€${amount.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.redAccent,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          _formatDate(date),
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildRecentTransactionsSection() {
     if (_transactions.isEmpty) {
       return Card(
@@ -547,16 +693,26 @@ class _SummaryCard extends StatelessWidget {
   final double amount;
   final Color color;
   final IconData icon;
+  final double? momPercentChange;
+  final bool? isMomPositive;
 
   const _SummaryCard({
     required this.title,
     required this.amount,
     required this.color,
     required this.icon,
+    this.momPercentChange,
+    this.isMomPositive,
   });
 
   @override
   Widget build(BuildContext context) {
+    final hasMoM = momPercentChange != null && momPercentChange != 0.0;
+    final momColor = isMomPositive == true ? Colors.greenAccent : Colors.redAccent;
+    final momArrow = (momPercentChange ?? 0) >= 0 
+        ? Icons.arrow_upward 
+        : Icons.arrow_downward;
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -593,6 +749,29 @@ class _SummaryCard extends StatelessWidget {
               fontWeight: FontWeight.bold,
             ),
           ),
+          // MoM percentage indicator
+          if (hasMoM)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    momArrow,
+                    color: momColor,
+                    size: 16,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${momPercentChange!.abs().toStringAsFixed(1)}% vs last month',
+                    style: TextStyle(
+                      color: momColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

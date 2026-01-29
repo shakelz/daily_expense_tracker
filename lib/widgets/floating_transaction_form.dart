@@ -296,7 +296,7 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
             onPanUpdate: (details) {
               setState(() {
                 _position = Offset(
-                  (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - 340),
+                  (_position.dx + details.delta.dx).clamp(0.0, screenSize.width - 400),
                   (_position.dy + details.delta.dy).clamp(0.0, screenSize.height - 500),
                 );
               });
@@ -306,7 +306,7 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
               borderRadius: BorderRadius.circular(20),
               color: Colors.white,
               child: Container(
-                width: 340,
+                width: 400,
                 padding: const EdgeInsets.all(16),
                 child: SingleChildScrollView(
                   child: Column(
@@ -460,7 +460,7 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                       
                       // Category Grid
                       SizedBox(
-                        height: 128,
+                        height: 160,
                         child: GridView.builder(
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 4,

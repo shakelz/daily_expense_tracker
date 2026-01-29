@@ -42,7 +42,6 @@
         <service
             android:name="com.flutter.floatingbubble.overlay.OverlayService"
             android:enabled="true"
-            android:foreground="true"
             android:exported="false" />
         
     </application>

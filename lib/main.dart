@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/home_page_redesign.dart';
@@ -10,6 +11,16 @@ import 'services/security_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Request overlay window permission for floating bubble
+  try {
+    if (!await FlutterOverlayWindow.isPermissionGranted()) {
+      debugPrint('Requesting overlay permission...');
+      await FlutterOverlayWindow.requestPermission();
+    }
+  } catch (e) {
+    debugPrint('Error requesting overlay permission: $e');
+  }
   
   // Initialize notifications
   final notificationHelper = NotificationHelper();

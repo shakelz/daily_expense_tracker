@@ -38,6 +38,11 @@ class _HomePageRedesignState extends State<HomePageRedesign>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 4, vsync: this);
+    
+    // Initialize bubble manager
+    _bubbleManager.initialize().then((_) {
+      debugPrint('BubbleManager initialized on app startup');
+    });
   }
 
   @override

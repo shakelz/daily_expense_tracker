@@ -535,22 +535,34 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                             _dateController.text = _formatDate(date);
                           }
                         },
-                        style: const TextStyle(color: Colors.black87),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
                         decoration: InputDecoration(
                           labelText: 'Date',
-                          labelStyle: const TextStyle(color: Color(0xFF999999), fontSize: 12),
+                          labelStyle: const TextStyle(
+                            color: Color(0xFF666666),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                           filled: true,
-                          fillColor: Colors.grey[50],
+                          fillColor: const Color(0xFFF8F9FA),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                          suffixIcon: const Icon(Icons.calendar_today, color: Color(0xFF999999), size: 18),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF2B7A91), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          suffixIcon: const Icon(Icons.calendar_today, color: Color(0xFF2B7A91), size: 20),
                         ),
                       ),
                       
@@ -559,24 +571,39 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                       // Title Field
                       TextField(
                         controller: _noteController,
-                        style: const TextStyle(color: Colors.black87),
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
+                        ),
                         maxLines: 2,
                         decoration: InputDecoration(
                           labelText: 'Title',
-                          labelStyle: const TextStyle(color: Color(0xFF999999), fontSize: 12),
+                          labelStyle: const TextStyle(
+                            color: Color(0xFF666666),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                           hintText: 'What did you buy?',
-                          hintStyle: const TextStyle(color: Color(0xFFCCCCCC)),
+                          hintStyle: const TextStyle(
+                            color: Color(0xFFBDBDBD),
+                            fontSize: 15,
+                          ),
                           filled: true,
-                          fillColor: Colors.grey[50],
+                          fillColor: const Color(0xFFF8F9FA),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
-                            borderSide: BorderSide(color: Colors.grey[300]!),
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFFE0E0E0), width: 1.5),
                           ),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: const BorderSide(color: Color(0xFF2B7A91), width: 2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                         ),
                       ),
                       
@@ -586,11 +613,11 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                       if (_accounts.isNotEmpty)
                         Container(
                           decoration: BoxDecoration(
-                            color: Colors.grey[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey[300]!),
+                            color: const Color(0xFFF8F9FA),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE0E0E0), width: 1.5),
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                           child: DropdownButtonHideUnderline(
                             child: DropdownButton<int>(
                               value: _selectedAccountId,

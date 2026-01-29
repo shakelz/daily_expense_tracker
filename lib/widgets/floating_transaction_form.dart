@@ -412,7 +412,29 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                           _amountFocusNode.requestFocus();
                         },
                         child: Container(
-                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                const Color(0xFF2B7A91).withOpacity(0.08),
+                                const Color(0xFF2B7A91).withOpacity(0.04),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: const Color(0xFF2B7A91).withOpacity(0.2),
+                              width: 2,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF2B7A91).withOpacity(0.08),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -421,33 +443,37 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                               const Text(
                                 '\$',
                                 style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.black87,
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF2B7A91),
+                                  letterSpacing: -0.5,
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              SizedBox(
-                                width: 120,
+                              const SizedBox(width: 8),
+                              Flexible(
                                 child: TextField(
                                   controller: _amountController,
                                   focusNode: _amountFocusNode,
                                   onChanged: (_) => setState(() {}),
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black87,
+                                    fontSize: 36,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1F2937),
+                                    letterSpacing: -0.5,
                                   ),
                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  decoration: InputDecoration(
+                                  decoration: const InputDecoration(
                                     hintText: '0.00',
                                     hintStyle: TextStyle(
-                                      fontSize: 32,
-                                      color: Colors.grey[400],
+                                      fontSize: 36,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFFBDBDBD),
+                                      letterSpacing: -0.5,
                                     ),
                                     border: InputBorder.none,
                                     contentPadding: EdgeInsets.zero,
+                                    isDense: true,
                                   ),
                                 ),
                               ),
@@ -456,7 +482,7 @@ class _FloatingTransactionFormState extends State<FloatingTransactionForm> {
                         ),
                       ),
                       
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 16),
                       
                       // Category Grid
                       SizedBox(

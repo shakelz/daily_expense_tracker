@@ -69,7 +69,13 @@ class _TransactionBubbleFormState extends State<TransactionBubbleForm> {
         isIncome: _isIncome,
       );
 
-      await DatabaseHelper().insertTransaction(transaction);
+      await DatabaseHelper().insertTransaction(
+        title: transaction.title,
+        amount: transaction.amount,
+        category: transaction.category,
+        date: transaction.date.toIso8601String(),
+        isIncome: transaction.isIncome,
+      );
 
       debugPrint(
         '=== TRANSACTION ADDED FROM BUBBLE ===\n'

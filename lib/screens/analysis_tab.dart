@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../services/database_helper.dart';
 import '../models/expense_entry.dart';
 
@@ -30,6 +31,15 @@ class _AnalysisTabState extends State<AnalysisTab> {
   String? _selectedCategory;
   List<String> _allCategories = [];
   bool _hasActiveFilter = false;
+  
+  // Track selected date preset in filter dialog
+  String? _selectedDatePreset;
+
+  // Section-specific filter states
+  String _top5Filter = 'top5'; // 'top5', 'top10', 'lowest5'
+  String _sourceFilter = 'highest'; // 'highest', 'lowest'
+  String _transactionSort = 'descending'; // 'ascending', 'descending'
+  bool _showAllTransactions = false; // false = last 10, true = all
 
   @override
   void initState() {
@@ -130,7 +140,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
     if (_isLoading) {
       return const Center(
         child: CircularProgressIndicator(
-          color: Color(0xFF7C4DFF),
+          color: Color(0xFF2B7A91),
         ),
       );
     }
@@ -138,7 +148,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analysis'),
-        backgroundColor: const Color(0xFF0F1115),
+        backgroundColor: const Color(0xFFFFFFFF),
         elevation: 0,
         actions: [
           // Filter button
@@ -149,7 +159,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
                 onTap: _showFilterBottomSheet,
                 child: Stack(
                   children: [
-                    const Icon(Icons.filter_list, color: Color(0xFF7C4DFF)),
+                    const Icon(Icons.filter_list, color: Color(0xFF2B7A91)),
                     // Red dot indicator if filter is active
                     if (_hasActiveFilter)
                       Positioned(
@@ -173,7 +183,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
       ),
       body: RefreshIndicator(
         onRefresh: _loadAnalytics,
-        color: const Color(0xFF7C4DFF),
+        color: const Color(0xFF2B7A91),
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(16),
@@ -201,6 +211,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
               _buildTop5ExpensesSection(),
               const SizedBox(height: 32),
 
+              // ========== SPENDING BY SOURCE ==========
+              _buildSpendingBySourceSection(),
+              const SizedBox(height: 32),
+
               // ========== RECENT TRANSACTIONS ==========
               _buildRecentTransactionsSection(),
               const SizedBox(height: 24),
@@ -213,19 +227,60 @@ class _AnalysisTabState extends State<AnalysisTab> {
 
   /// Show the filter bottom sheet
   void _showFilterBottomSheet() {
+    // Reset the selected preset to match current filter state
+    _updateSelectedPreset();
+    
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1E1E2E),
+      backgroundColor: const Color(0xFFF8FAFB),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       isScrollControlled: true,
-      builder: (context) => _buildFilterBottomSheet(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, bottomSheetSetState) => _buildFilterBottomSheet(bottomSheetSetState),
+      ),
     );
   }
 
+  /// Determine which preset is currently selected based on filter dates
+  void _updateSelectedPreset() {
+    if (_filterStartDate == null || _filterEndDate == null) {
+      _selectedDatePreset = null;
+      return;
+    }
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final filterStart = DateTime(_filterStartDate!.year, _filterStartDate!.month, _filterStartDate!.day);
+    
+    // Check if it's today
+    if (filterStart == today) {
+      _selectedDatePreset = 'Today';
+      return;
+    }
+
+    // Check if it's this week
+    final weekStart = now.subtract(Duration(days: now.weekday - 1));
+    final filterWeekStart = DateTime(weekStart.year, weekStart.month, weekStart.day);
+    if (filterStart == filterWeekStart) {
+      _selectedDatePreset = 'This Week';
+      return;
+    }
+
+    // Check if it's this month
+    final monthStart = DateTime(now.year, now.month, 1);
+    final filterMonthStart = DateTime(_filterStartDate!.year, _filterStartDate!.month, 1);
+    if (filterMonthStart == monthStart) {
+      _selectedDatePreset = 'This Month';
+      return;
+    }
+
+    _selectedDatePreset = 'Custom';
+  }
+
   /// Build the filter bottom sheet widget
-  Widget _buildFilterBottomSheet() {
+  Widget _buildFilterBottomSheet(StateSetter bottomSheetSetState) {
     return DraggableScrollableSheet(
       expand: false,
       builder: (context, scrollController) => SingleChildScrollView(
@@ -273,14 +328,51 @@ class _AnalysisTabState extends State<AnalysisTab> {
               ),
               const SizedBox(height: 12),
 
-              // Preset buttons
+              // Preset buttons with visual selection
               Wrap(
                 spacing: 8,
+                runSpacing: 8,
                 children: [
-                  _buildDatePresetButton('Today', _setFilterToday),
-                  _buildDatePresetButton('This Week', _setFilterThisWeek),
-                  _buildDatePresetButton('This Month', _setFilterThisMonth),
-                  _buildDatePresetButton('Custom', _setFilterCustom),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedDatePreset == 'Today' ? const Color(0xFF2B7A91) : Colors.grey[800],
+                    ),
+                    onPressed: () {
+                      _setFilterToday();
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Today'),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedDatePreset == 'This Week' ? const Color(0xFF2B7A91) : Colors.grey[800],
+                    ),
+                    onPressed: () {
+                      _setFilterThisWeek();
+                      Navigator.pop(context);
+                    },
+                    child: const Text('This Week'),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedDatePreset == 'This Month' ? const Color(0xFF2B7A91) : Colors.grey[800],
+                    ),
+                    onPressed: () {
+                      _setFilterThisMonth();
+                      Navigator.pop(context);
+                    },
+                    child: const Text('This Month'),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _selectedDatePreset == 'Custom' ? const Color(0xFF2B7A91) : Colors.grey[800],
+                    ),
+                    onPressed: () async {
+                      await _setFilterCustom();
+                      if (mounted) Navigator.pop(context);
+                    },
+                    child: const Text('Custom'),
+                  ),
                 ],
               ),
 
@@ -291,7 +383,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
                   child: Text(
                     '${_filterStartDate!.day}/${_filterStartDate!.month}/${_filterStartDate!.year} - ${_filterEndDate!.day}/${_filterEndDate!.month}/${_filterEndDate!.year}',
                     style: const TextStyle(
-                      color: Color(0xFF7C4DFF),
+                      color: Color(0xFF2B7A91),
                       fontSize: 13,
                       fontStyle: FontStyle.italic,
                     ),
@@ -316,38 +408,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  // "All" option
-                  FilterChip(
-                    label: const Text('All'),
-                    selected: _selectedCategory == null,
-                    onSelected: (selected) {
-                      setState(() {
-                        _selectedCategory = null;
-                      });
-                    },
-                    backgroundColor: const Color(0xFF2E2E3E),
-                    selectedColor: const Color(0xFF7C4DFF),
-                    labelStyle: TextStyle(
-                      color: _selectedCategory == null
-                          ? Colors.white
-                          : Colors.white,
-                    ),
+                  const Text(
+                    'Note: Category filters are applied per section',
+                    style: TextStyle(fontSize: 12, color: Colors.grey, fontStyle: FontStyle.italic),
                   ),
-                  // Individual categories
-                  ..._allCategories.map((category) {
-                    return FilterChip(
-                      label: Text(category),
-                      selected: _selectedCategory == category,
-                      onSelected: (selected) {
-                        setState(() {
-                          _selectedCategory = selected ? category : null;
-                        });
-                      },
-                      backgroundColor: const Color(0xFF2E2E3E),
-                      selectedColor: const Color(0xFF7C4DFF),
-                      labelStyle: const TextStyle(color: Colors.white),
-                    );
-                  }),
                 ],
               ),
 
@@ -358,7 +422,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF7C4DFF),
+                    backgroundColor: const Color(0xFF2B7A91),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
@@ -383,30 +447,16 @@ class _AnalysisTabState extends State<AnalysisTab> {
     );
   }
 
-  /// Build date preset button
-  Widget _buildDatePresetButton(String label, VoidCallback onPressed) {
-    return OutlinedButton(
-      onPressed: onPressed,
-      style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Color(0xFF7C4DFF)),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
-        ),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(color: Color(0xFF7C4DFF)),
-      ),
-    );
-  }
-
   /// Set filter to today
   void _setFilterToday() {
     final now = DateTime.now();
     setState(() {
       _filterStartDate = DateTime(now.year, now.month, now.day);
       _filterEndDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      _selectedDatePreset = 'Today';
+      _hasActiveFilter = true;
     });
+    _loadAnalytics();
   }
 
   /// Set filter to this week
@@ -416,7 +466,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
     setState(() {
       _filterStartDate = DateTime(weekStart.year, weekStart.month, weekStart.day);
       _filterEndDate = DateTime(now.year, now.month, now.day, 23, 59, 59);
+      _selectedDatePreset = 'This Week';
+      _hasActiveFilter = true;
     });
+    _loadAnalytics();
   }
 
   /// Set filter to this month
@@ -425,11 +478,14 @@ class _AnalysisTabState extends State<AnalysisTab> {
     setState(() {
       _filterStartDate = DateTime(now.year, now.month, 1);
       _filterEndDate = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+      _selectedDatePreset = 'This Month';
+      _hasActiveFilter = true;
     });
+    _loadAnalytics();
   }
 
   /// Set custom date filter (shows date picker)
-  void _setFilterCustom() async {
+  Future<void> _setFilterCustom() async {
     final startDate = await showDatePicker(
       context: context,
       initialDate: _filterStartDate ?? DateTime.now(),
@@ -449,31 +505,51 @@ class _AnalysisTabState extends State<AnalysisTab> {
         setState(() {
           _filterStartDate = startDate;
           _filterEndDate = DateTime(endDate.year, endDate.month, endDate.day, 23, 59, 59);
+          _selectedDatePreset = 'Custom';
+          _hasActiveFilter = true;
         });
+        _loadAnalytics();
       }
     }
   }
 
   /// Reset all filters
   void _resetFilters() {
+    if (!mounted) return;
+    
     setState(() {
       _filterStartDate = null;
       _filterEndDate = null;
       _selectedCategory = null;
+      _selectedDatePreset = null;
       _hasActiveFilter = false;
     });
-    Navigator.pop(context);
-    _loadAnalytics();
+    
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+    
+    if (mounted) {
+      _loadAnalytics();
+    }
   }
 
   /// Apply filters and refresh data
   void _applyFilters() {
+    if (!mounted) return;
+    
     setState(() {
       _hasActiveFilter = (_filterStartDate != null && _filterEndDate != null) ||
           (_selectedCategory != null && _selectedCategory!.isNotEmpty);
     });
-    Navigator.pop(context);
-    _loadAnalytics();
+    
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context);
+    }
+    
+    if (mounted) {
+      _loadAnalytics();
+    }
   }
 
   /// Build active filter indicator badge
@@ -495,20 +571,20 @@ class _AnalysisTabState extends State<AnalysisTab> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF7C4DFF).withOpacity(0.2),
-        border: Border.all(color: const Color(0xFF7C4DFF), width: 1),
+        color: const Color(0xFF2B7A91).withOpacity(0.2),
+        border: Border.all(color: const Color(0xFF2B7A91), width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.filter_list, color: Color(0xFF7C4DFF), size: 18),
+          const Icon(Icons.filter_list, color: Color(0xFF2B7A91), size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'Filtered: ${filterLabels.join(', ')}',
               style: const TextStyle(
-                color: Color(0xFF7C4DFF),
+                color: Color(0xFF2B7A91),
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
               ),
@@ -519,7 +595,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
           const SizedBox(width: 8),
           GestureDetector(
             onTap: _resetFilters,
-            child: const Icon(Icons.close, color: Color(0xFF7C4DFF), size: 18),
+            child: const Icon(Icons.close, color: Color(0xFF2B7A91), size: 18),
           ),
         ],
       ),
@@ -527,18 +603,43 @@ class _AnalysisTabState extends State<AnalysisTab> {
   }
 
   Widget _buildSummarySection() {
-    final balance = _totalIncome - _totalExpense;
     final incomePercentChange = _momData['income_percent_change'] as double? ?? 0.0;
     final expensePercentChange = _momData['expense_percent_change'] as double? ?? 0.0;
     
     return Column(
       children: [
-        Text(
-          'Financial Overview',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: const Color(0xFF7C4DFF),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Financial Overview',
+              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: const Color(0xFF2B7A91),
+              ),
+            ),
+            IconButton(
+              icon: Stack(
+                children: [
+                  const Icon(Icons.filter_list, color: Color(0xFF2B7A91)),
+                  if (_hasActiveFilter)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.redAccent,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              onPressed: _showFilterBottomSheet,
+            ),
+          ],
         ),
         const SizedBox(height: 16),
         Row(
@@ -565,13 +666,6 @@ class _AnalysisTabState extends State<AnalysisTab> {
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 12),
-        _SummaryCard(
-          title: 'Balance',
-          amount: balance,
-          color: balance >= 0 ? Colors.lightGreenAccent : Colors.orangeAccent,
-          icon: Icons.wallet,
         ),
       ],
     );
@@ -604,14 +698,42 @@ class _AnalysisTabState extends State<AnalysisTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.pie_chart, color: Color(0xFF7C4DFF)),
-                const SizedBox(width: 8),
-                Text(
-                  'Spending by Category',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    const Icon(Icons.pie_chart, color: Color(0xFF2B7A91)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Spending by Category',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: Stack(
+                    children: [
+                      const Icon(Icons.filter_list, color: Color(0xFF2B7A91), size: 20),
+                      if (_hasActiveFilter)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+                  onPressed: _showFilterBottomSheet,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
@@ -649,7 +771,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
                       '${percentage.toStringAsFixed(1)}%',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF7C4DFF),
+                        color: Color(0xFF2B7A91),
                       ),
                     ),
                   ],
@@ -692,167 +814,224 @@ class _AnalysisTabState extends State<AnalysisTab> {
   }
 
   Widget _buildHourlyChartSection() {
-    if (_hourlySpending.isEmpty) {
-      return Card(
-        elevation: 2,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: const Padding(
-          padding: EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'No hourly spending data yet.\nAdd transactions to see spending patterns.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
+    return FutureBuilder<Map<String, double>>(
+      future: _getDynamicSpendingData(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
             ),
-          ),
-        ),
-      );
-    }
+          );
+        }
 
-    // Fill missing hours with 0
-    final completeData = <int, double>{};
-    for (int hour = 0; hour < 24; hour++) {
-      completeData[hour] = _hourlySpending[hour] ?? 0.0;
-    }
-
-    final maxSpending = completeData.values.reduce((a, b) => a > b ? a : b);
-    final barGroups = completeData.entries.map((entry) {
-      return BarChartGroupData(
-        x: entry.key,
-        barRods: [
-          BarChartRodData(
-            toY: entry.value,
-            color: const Color(0xFF7C4DFF),
-            width: 6,
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(4),
-              topRight: Radius.circular(4),
-            ),
-            gradient: LinearGradient(
-              colors: [
-                const Color(0xFF7C4DFF).withOpacity(0.7),
-                const Color(0xFF9C27B0),
-              ],
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-            ),
-          ),
-        ],
-      );
-    }).toList();
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(Icons.access_time, color: Color(0xFF7C4DFF)),
-                const SizedBox(width: 8),
-                Text(
-                  'Spending by Hour',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+        if (!snapshot.hasData || snapshot.data!.isEmpty) {
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'No spending data in selected period.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
                 ),
-              ],
+              ),
             ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 200,
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY: maxSpending > 0 ? maxSpending * 1.2 : 100,
-                  barTouchData: BarTouchData(
-                    enabled: true,
-                    touchTooltipData: BarTouchTooltipData(
-                      getTooltipColor: (_) => const Color(0xFF2A2A3E),
-                      getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                        return BarTooltipItem(
-                          '${group.x}:00\n€${rod.toY.toStringAsFixed(2)}',
-                          const TextStyle(
-                            color: Colors.white,
+          );
+        }
+
+        final timeRangeType = _getTimeRangeType();
+        final spendingData = snapshot.data!;
+        final maxSpending = spendingData.values.isEmpty 
+          ? 100.0 
+          : spendingData.values.reduce((a, b) => a > b ? a : b);
+
+        List<BarChartGroupData> barGroups = [];
+        int index = 0;
+        
+        for (final entry in spendingData.entries) {
+          barGroups.add(BarChartGroupData(
+            x: index,
+            barRods: [
+              BarChartRodData(
+                toY: entry.value,
+                color: const Color(0xFF2B7A91),
+                width: 6,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(4),
+                  topRight: Radius.circular(4),
+                ),
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF2B7A91).withOpacity(0.7),
+                    const Color(0xFF9C27B0),
+                  ],
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                ),
+              ),
+            ],
+          ));
+          index++;
+        }
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time, color: Color(0xFF2B7A91)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Spending by ${_getTimeRangeLabel()}',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            fontSize: 12,
                           ),
-                        );
-                      },
+                        ),
+                      ],
                     ),
-                  ),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
+                    IconButton(
+                      icon: Stack(
+                        children: [
+                          const Icon(Icons.filter_list, color: Color(0xFF2B7A91), size: 20),
+                          if (_hasActiveFilter)
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      onPressed: _showFilterBottomSheet,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
                     ),
-                    topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false),
-                    ),
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          if (value.toInt() % 3 == 0) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                '${value.toInt()}h',
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 200,
+                  child: BarChart(
+                    BarChartData(
+                      alignment: BarChartAlignment.spaceAround,
+                      maxY: maxSpending > 0 ? maxSpending * 1.2 : 100,
+                      barTouchData: BarTouchData(
+                        enabled: true,
+                        touchTooltipData: BarTouchTooltipData(
+                          getTooltipColor: (_) => const Color(0xFF2A2A3E),
+                          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                            final label = spendingData.keys.toList()[group.x];
+                            return BarTooltipItem(
+                              '$label\n€${rod.toY.toStringAsFixed(2)}',
+                              const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      titlesData: FlTitlesData(
+                        show: true,
+                        rightTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        topTitles: const AxisTitles(
+                          sideTitles: SideTitles(showTitles: false),
+                        ),
+                        bottomTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              final labels = spendingData.keys.toList();
+                              int idx = value.toInt();
+                              
+                              // Show every nth label to avoid crowding
+                              int interval = (labels.length / 6).ceil();
+                              if (interval < 1) interval = 1;
+                              
+                              if (idx % interval == 0 && idx < labels.length) {
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    labels[idx],
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 10,
+                                    ),
+                                  ),
+                                );
+                              }
+                              return const SizedBox.shrink();
+                            },
+                            reservedSize: 30,
+                          ),
+                        ),
+                        leftTitles: AxisTitles(
+                          sideTitles: SideTitles(
+                            showTitles: true,
+                            getTitlesWidget: (value, meta) {
+                              return Text(
+                                '€${value.toInt()}',
                                 style: const TextStyle(
                                   color: Colors.grey,
                                   fontSize: 10,
                                 ),
-                              ),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        },
-                        reservedSize: 30,
+                              );
+                            },
+                            reservedSize: 40,
+                          ),
+                        ),
                       ),
-                    ),
-                    leftTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          return Text(
-                            '€${value.toInt()}',
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 10,
-                            ),
+                      gridData: FlGridData(
+                        show: true,
+                        drawVerticalLine: false,
+                        horizontalInterval: maxSpending > 0 ? maxSpending / 5 : 20,
+                        getDrawingHorizontalLine: (value) {
+                          return FlLine(
+                            color: Colors.grey.withOpacity(0.2),
+                            strokeWidth: 1,
                           );
                         },
-                        reservedSize: 40,
                       ),
+                      borderData: FlBorderData(show: false),
+                      barGroups: barGroups,
                     ),
                   ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: maxSpending > 0 ? maxSpending / 5 : 20,
-                    getDrawingHorizontalLine: (value) {
-                      return FlLine(
-                        color: Colors.grey.withOpacity(0.2),
-                        strokeWidth: 1,
-                      );
-                    },
-                  ),
-                  borderData: FlBorderData(show: false),
-                  barGroups: barGroups,
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
-      ),
-    );
-  }
+          ),
+        );
+        },
+      );
+    }
 
   Widget _buildTop5ExpensesSection() {
-    if (_top5Expenses.isEmpty) {
+    final filteredExpenses = _filterTopExpenses(_top5Expenses);
+    
+    if (filteredExpenses.isEmpty) {
       return Card(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -878,19 +1057,47 @@ class _AnalysisTabState extends State<AnalysisTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.trending_up, color: Color(0xFF7C4DFF)),
-                const SizedBox(width: 8),
-                Text(
-                  'Top 5 Expenses',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    const Icon(Icons.trending_up, color: Color(0xFF2B7A91)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Top ${_top5Filter == 'top10' ? '10' : _top5Filter == 'lowest5' ? 'Lowest 5' : '5'} Expenses',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: Stack(
+                    children: [
+                      const Icon(Icons.filter_list, color: Color(0xFF2B7A91), size: 20),
+                      if (_top5Filter != 'top5')
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+                  onPressed: _showTop5FilterDialog,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
             const SizedBox(height: 16),
-            ..._top5Expenses.asMap().entries.map((entry) {
+            ...filteredExpenses.asMap().entries.map((entry) {
               final index = entry.key;
               final expense = entry.value;
               final title = expense['title'] as String;
@@ -910,7 +1117,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
                       width: 32,
                       height: 32,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF7C4DFF).withOpacity(0.2),
+                        color: const Color(0xFF2B7A91).withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -918,7 +1125,7 @@ class _AnalysisTabState extends State<AnalysisTab> {
                           '${index + 1}',
                           style: const TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF7C4DFF),
+                            color: Color(0xFF2B7A91),
                           ),
                         ),
                       ),
@@ -979,8 +1186,213 @@ class _AnalysisTabState extends State<AnalysisTab> {
     );
   }
 
+  Widget _buildSpendingBySourceSection() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: _hasActiveFilter
+          ? _dbHelper.getSpendingBySourceFiltered(
+              startDate: _filterStartDate,
+              endDate: _filterEndDate,
+            )
+          : _dbHelper.getSpendingBySource(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: CircularProgressIndicator(color: Color(0xFF2B7A91)),
+              ),
+            ),
+          );
+        }
+
+        var spendingBySource = snapshot.data ?? [];
+        
+        // Apply section-specific sorting
+        spendingBySource = _sortSpendingBySource(spendingBySource);
+        
+        if (spendingBySource.isEmpty) {
+          return Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            child: const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(
+                child: Text(
+                  'No spending data available.\nAdd transactions and accounts to see spending by source.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+              ),
+            ),
+          );
+        }
+
+        // Calculate total for percentage calculation
+        final totalSpending = spendingBySource.fold<double>(
+          0,
+          (sum, item) => sum + ((item['total_expense'] ?? 0) as num).toDouble(),
+        );
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.account_balance_wallet, color: Color(0xFF2B7A91)),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Spending by Source',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: Stack(
+                        children: [
+                          const Icon(Icons.filter_list, color: Color(0xFF2B7A91), size: 20),
+                          if (_sourceFilter != 'highest')
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.redAccent,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      onPressed: _showSourceFilterDialog,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                ...spendingBySource.asMap().entries.map((entry) {
+                  final source = entry.value;
+                  final accountName = source['account_name'] as String? ?? 'Unknown Account';
+                  final accountType = source['account_type'] as String? ?? 'Bank';
+                  final totalExpense = ((source['total_expense'] ?? 0) as num).toDouble();
+                  
+                  final percentage = totalSpending > 0 ? (totalExpense / totalSpending * 100) : 0.0;
+                  
+                  // Color based on account type
+                  final accountColor = accountType == 'Bank' 
+                      ? const Color(0xFF0066CC) 
+                      : const Color(0xFF10B981);
+                  
+                  // Icon based on account type
+                  final accountIcon = accountType == 'Bank' 
+                      ? Icons.account_balance 
+                      : Icons.wallet;
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            // Account icon
+                            Container(
+                              width: 36,
+                              height: 36,
+                              decoration: BoxDecoration(
+                                color: accountColor.withOpacity(0.2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                accountIcon,
+                                color: accountColor,
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Account name
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    accountName,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    accountType,
+                                    style: const TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Amount
+                            Text(
+                              '€${totalExpense.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: Color(0xFFEF4444),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        // Progress bar
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                            value: percentage / 100,
+                            minHeight: 6,
+                            backgroundColor: Colors.grey[200],
+                            valueColor: AlwaysStoppedAnimation<Color>(accountColor),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${percentage.toStringAsFixed(1)}% of total expenses',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildRecentTransactionsSection() {
-    if (_transactions.isEmpty) {
+    final sortedTransactions = _sortTransactions(_transactions);
+    
+    if (sortedTransactions.isEmpty) {
       return Card(
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1005,19 +1417,47 @@ class _AnalysisTabState extends State<AnalysisTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.history, color: Color(0xFF7C4DFF)),
-                const SizedBox(width: 8),
-                Text(
-                  'Recent Transactions (Last 10)',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
+                Row(
+                  children: [
+                    const Icon(Icons.history, color: Color(0xFF2B7A91)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Recent Transactions${_showAllTransactions ? '' : ' (Last 10)'}',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  icon: Stack(
+                    children: [
+                      const Icon(Icons.filter_list, color: Color(0xFF2B7A91), size: 20),
+                      if (_transactionSort != 'descending' || _showAllTransactions)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
+                  onPressed: _showTransactionFilterDialog,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            ..._transactions.map((tx) {
+            ...sortedTransactions.map((tx) {
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -1075,6 +1515,294 @@ class _AnalysisTabState extends State<AnalysisTab> {
     );
   }
 
+  // ============ HELPER METHODS FOR DYNAMIC FILTERING ============
+
+  /// Determine the time range type based on selected dates
+  String _getTimeRangeType() {
+    if (!_hasActiveFilter || _filterStartDate == null || _filterEndDate == null) {
+      return 'month'; // Default to monthly
+    }
+    
+    final difference = _filterEndDate!.difference(_filterStartDate!).inDays;
+    
+    if (difference == 0) {
+      return 'hourly'; // Single day
+    } else if (difference <= 7) {
+      return 'daily'; // Week or less
+    } else if (difference <= 31) {
+      return 'daily'; // Month or less
+    } else {
+      return 'monthly'; // More than a month
+    }
+  }
+
+  /// Get dynamic spending data based on time range
+  Future<Map<String, double>> _getDynamicSpendingData() async {
+    final timeRangeType = _getTimeRangeType();
+    final startDate = _filterStartDate;
+    final endDate = _filterEndDate;
+    
+    if (timeRangeType == 'hourly') {
+      final hourlyMap = await _dbHelper.getSpendingByHourFiltered(
+        startDate: startDate,
+        endDate: endDate,
+      );
+      // Convert int keys (hours) to string
+      return hourlyMap.map((hour, amount) => MapEntry(hour.toString(), amount));
+    } else if (timeRangeType == 'daily') {
+      return await _dbHelper.getSpendingByDayFiltered(
+        startDate: startDate,
+        endDate: endDate,
+      );
+    } else {
+      // monthly
+      return await _dbHelper.getSpendingByMonthFiltered(
+        startDate: startDate,
+        endDate: endDate,
+      );
+    }
+  }
+
+  /// Get time range label for display
+  String _getTimeRangeLabel() {
+    final timeType = _getTimeRangeType();
+    if (timeType == 'hourly') {
+      return 'Hourly';
+    } else if (timeType == 'daily') {
+      return 'Daily';
+    } else {
+      return 'Monthly';
+    }
+  }
+
+  /// Sort and limit top expenses based on filter
+  List<Map<String, dynamic>> _filterTopExpenses(List<Map<String, dynamic>> expenses) {
+    List<Map<String, dynamic>> sorted = List.from(expenses);
+    
+    // Sort by amount descending for top, ascending for lowest
+    if (_top5Filter == 'lowest5') {
+      sorted.sort((a, b) => ((a['amount'] ?? 0) as num)
+          .compareTo((b['amount'] ?? 0) as num));
+      return sorted.take(5).toList();
+    } else if (_top5Filter == 'top10') {
+      sorted.sort((a, b) => ((b['amount'] ?? 0) as num)
+          .compareTo((a['amount'] ?? 0) as num));
+      return sorted.take(10).toList();
+    } else {
+      // top5 (default)
+      sorted.sort((a, b) => ((b['amount'] ?? 0) as num)
+          .compareTo((a['amount'] ?? 0) as num));
+      return sorted.take(5).toList();
+    }
+  }
+
+  /// Sort spending by source
+  List<Map<String, dynamic>> _sortSpendingBySource(
+    List<Map<String, dynamic>> spending,
+  ) {
+    List<Map<String, dynamic>> sorted = List.from(spending);
+    
+    if (_sourceFilter == 'lowest') {
+      sorted.sort((a, b) => ((a['total_expense'] ?? 0) as num)
+          .compareTo((b['total_expense'] ?? 0) as num));
+    } else {
+      // highest (default)
+      sorted.sort((a, b) => ((b['total_expense'] ?? 0) as num)
+          .compareTo((a['total_expense'] ?? 0) as num));
+    }
+    
+    return sorted;
+  }
+
+  /// Sort and limit transactions
+  List<ExpenseEntry> _sortTransactions(List<ExpenseEntry> txs) {
+    List<ExpenseEntry> sorted = List.from(txs);
+    
+    if (_transactionSort == 'ascending') {
+      sorted.sort((a, b) => a.amount.compareTo(b.amount));
+    } else {
+      // descending (default - by date)
+      sorted.sort((a, b) => b.date.compareTo(a.date));
+    }
+    
+    if (!_showAllTransactions) {
+      return sorted.take(10).toList();
+    }
+    return sorted;
+  }
+
+  // ============ DIALOG METHODS FOR SECTION FILTERS ============
+
+  /// Show Top 5 Expenses filter dialog
+  void _showTop5FilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1B23),
+          title: const Text(
+            'Filter Top Expenses',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildFilterOption(
+                label: 'Top 5 Expenses',
+                value: 'top5',
+                groupValue: _top5Filter,
+                onChanged: (value) {
+                  setState(() => _top5Filter = value ?? 'top5');
+                  Navigator.pop(context);
+                },
+              ),
+              _buildFilterOption(
+                label: 'Top 10 Expenses',
+                value: 'top10',
+                groupValue: _top5Filter,
+                onChanged: (value) {
+                  setState(() => _top5Filter = value ?? 'top10');
+                  Navigator.pop(context);
+                },
+              ),
+              _buildFilterOption(
+                label: 'Lowest 5 Expenses',
+                value: 'lowest5',
+                groupValue: _top5Filter,
+                onChanged: (value) {
+                  setState(() => _top5Filter = value ?? 'lowest5');
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Show Spending by Source filter dialog
+  void _showSourceFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1B23),
+          title: const Text(
+            'Filter by Source',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildFilterOption(
+                label: 'Highest Spending',
+                value: 'highest',
+                groupValue: _sourceFilter,
+                onChanged: (value) {
+                  setState(() => _sourceFilter = value ?? 'highest');
+                  Navigator.pop(context);
+                },
+              ),
+              _buildFilterOption(
+                label: 'Lowest Spending',
+                value: 'lowest',
+                groupValue: _sourceFilter,
+                onChanged: (value) {
+                  setState(() => _sourceFilter = value ?? 'lowest');
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Show Recent Transactions filter dialog
+  void _showTransactionFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1B23),
+          title: const Text(
+            'Filter Transactions',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Sort By:',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              _buildFilterOption(
+                label: 'Most Recent',
+                value: 'descending',
+                groupValue: _transactionSort,
+                onChanged: (value) {
+                  setState(() => _transactionSort = value ?? 'descending');
+                },
+              ),
+              _buildFilterOption(
+                label: 'Oldest First',
+                value: 'ascending',
+                groupValue: _transactionSort,
+                onChanged: (value) {
+                  setState(() => _transactionSort = value ?? 'ascending');
+                },
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Show:',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                title: const Text('Show All Transactions', style: TextStyle(color: Colors.white, fontSize: 14)),
+                value: _showAllTransactions,
+                activeColor: const Color(0xFF2B7A91),
+                onChanged: (value) {
+                  setState(() => _showAllTransactions = value ?? false);
+                },
+              ),
+              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Done', style: TextStyle(color: Color(0xFF2B7A91))),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Build filter radio option widget
+  Widget _buildFilterOption({
+    required String label,
+    required String value,
+    required String groupValue,
+    required Function(String?) onChanged,
+  }) {
+    return RadioListTile<String>(
+      title: Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
+      value: value,
+      groupValue: groupValue,
+      activeColor: const Color(0xFF2B7A91),
+      onChanged: onChanged,
+    );
+  }
+
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }
@@ -1090,10 +1818,10 @@ class _AnalysisTabState extends State<AnalysisTab> {
       'Freelance': const Color(0xFF3498DB),
       'Investment': const Color(0xFFF39C12),
       'Gift': const Color(0xFFE91E63),
-      'Custom': const Color(0xFF7C4DFF),
+      'Custom': const Color(0xFF2B7A91),
     };
     
-    return colors[category] ?? const Color(0xFF7C4DFF);
+    return colors[category] ?? const Color(0xFF2B7A91);
   }
 }
 
@@ -1125,7 +1853,7 @@ class _SummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E2E),
+        color: const Color(0xFFF8FAFB),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: color.withOpacity(0.3),

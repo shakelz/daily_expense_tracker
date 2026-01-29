@@ -54,12 +54,18 @@ class SecurityService {
       final List<BiometricType> availableBiometrics = await getAvailableBiometrics();
       print('Available biometrics: $availableBiometrics');
 
+      if (availableBiometrics.isEmpty) {
+        print('No biometric types available');
+        return true;
+      }
+
       // Authenticate
       final bool didAuthenticate = await _localAuth.authenticate(
         localizedReason: 'Please authenticate to access your expense tracker',
         options: const AuthenticationOptions(
-          stickyAuth: true, // Authentication dialog will not be dismissed until successful
-          biometricOnly: false, // Allow PIN/Pattern as fallback
+          stickyAuth: true,
+          biometricOnly: false,
+          useErrorDialogs: true,
         ),
       );
 
@@ -67,30 +73,38 @@ class SecurityService {
         // Update last authentication time
         await _prefs.setLastAuthTime(DateTime.now());
         print('✓ Authentication successful');
+        return true;
       } else {
-        print('✗ Authentication failed');
+        print('✗ Authentication cancelled by user');
+        return false;
       }
-
-      return didAuthenticate;
     } on PlatformException catch (e) {
-      print('Error during authentication: $e');
+      print('PlatformException during authentication: ${e.code}');
+      print('Error message: ${e.message}');
       
       // Handle specific error codes
       if (e.code == 'NotAvailable') {
         print('Biometric authentication not available');
-        return true; // Allow access
+        return true;
       } else if (e.code == 'NotEnrolled') {
         print('No biometrics enrolled on device');
-        return true; // Allow access
+        return true;
       } else if (e.code == 'LockedOut') {
         print('Too many failed attempts - locked out');
         return false;
       } else if (e.code == 'PermanentlyLockedOut') {
         print('Biometric authentication permanently locked');
         return false;
+      } else if (e.code == 'UserCanceled') {
+        print('User cancelled authentication');
+        return false;
+      } else if (e.code == 'NotInteractive') {
+        print('Authentication dialog not interactive');
+        return false;
       }
       
       // For other errors, allow access (graceful degradation)
+      print('Unknown authentication error: ${e.code} - ${e.message}');
       return true;
     } catch (e) {
       print('Unexpected error during authentication: $e');

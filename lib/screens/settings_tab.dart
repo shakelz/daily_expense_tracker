@@ -403,25 +403,37 @@ class _SettingsTabState extends State<SettingsTab> {
   }
 
   Future<void> _testAuthentication() async {
-    final result = await _securityService.authenticateUser(forceAuthentication: true);
-    
-    if (mounted) {
-      if (result) {
+    try {
+      final result = await _securityService.authenticateUser(forceAuthentication: true);
+      
+      if (mounted) {
+        if (result) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✓ Authentication successful'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          // Refresh last auth time
+          await _loadSecuritySettings();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✗ Authentication failed or cancelled'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✓ Authentication successful'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-        // Refresh last auth time
-        _loadSecuritySettings();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✗ Authentication failed'),
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: Duration(seconds: 2),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -543,7 +555,7 @@ class _SettingsTabState extends State<SettingsTab> {
           ),
           const SizedBox(height: 16),
           Text(
-            'Backup your expense data to keep it safe, or restore from a previous backup.',
+            'Backup your expense data to keep it safe, or restore from a previous backup file.',
             style: TextStyle(
               fontSize: 13,
               color: Colors.grey[400],
@@ -586,6 +598,34 @@ class _SettingsTabState extends State<SettingsTab> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Info message
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.1),
+              border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info, color: Colors.blue, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Backups are saved as .db files. Keep them safe in cloud storage or external drives.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[300],
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -738,25 +778,26 @@ class _SettingsTabState extends State<SettingsTab> {
       }
     }
 
-    // Show warning dialog
+    // Show confirmation dialog
     final bool? confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1B23),
         title: const Row(
           children: [
             Icon(Icons.warning, color: Colors.orange),
             SizedBox(width: 8),
-            Text('Warning!'),
+            Text('Restore Database', style: TextStyle(color: Colors.white)),
           ],
         ),
         content: const Text(
-          'Miyan, purana data ud jayenga aur backup wala data aa jayenga. Pakka?',
-          style: TextStyle(fontSize: 16),
+          'This will replace all current data with the backup file.\n\nThis action cannot be undone.\n\nAre you sure you want to restore?',
+          style: TextStyle(fontSize: 14, color: Colors.white70),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -775,20 +816,43 @@ class _SettingsTabState extends State<SettingsTab> {
     }
 
     try {
-      // Show loading
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      // Show loading with detailed message
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => WillPopScope(
+            onWillPop: () async => false,
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF1A1B23),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(
+                    color: Color(0xFF4ECDC4),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Restoring database...',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'This may take a moment. Please wait...',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      }
 
       // Perform restore
       final success = await BackupRestoreService.importDatabase();
 
-      // Close loading
-      if (mounted) {
+      // Close loading dialog
+      if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
 
@@ -799,11 +863,11 @@ class _SettingsTabState extends State<SettingsTab> {
         // Notify parent to refresh
         widget.onDatabaseRestored();
         
-        // Show success message
+        // Show success message with longer duration
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✓ Database restored successfully! Please restart the app.'),
+              content: Text('✓ Database restored successfully!\nPlease restart the app to apply changes.'),
               backgroundColor: Colors.green,
               duration: Duration(seconds: 5),
             ),
@@ -813,16 +877,16 @@ class _SettingsTabState extends State<SettingsTab> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✗ Failed to restore database'),
+              content: Text('✗ Failed to restore database. Please check if the file is valid.'),
               backgroundColor: Colors.red,
-              duration: Duration(seconds: 3),
+              duration: Duration(seconds: 4),
             ),
           );
         }
       }
     } catch (e) {
       // Close loading if still open
-      if (mounted) {
+      if (mounted && Navigator.canPop(context)) {
         Navigator.pop(context);
       }
       
@@ -831,7 +895,7 @@ class _SettingsTabState extends State<SettingsTab> {
           SnackBar(
             content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 4),
           ),
         );
       }

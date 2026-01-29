@@ -1,5 +1,5 @@
-name: my_expense_tracker
-description: "A new Flutter project."
+name: fiscus_money_basket
+description: "Fiscus - money basket. A smart expense tracking app for managing your finances."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -46,6 +46,7 @@ dependencies:
   shared_preferences: ^2.2.0
   flutter_local_notifications: ^17.0.1
   workmanager: ^0.9.0
+  google_fonts: ^6.1.0
 
 dev_dependencies:
   flutter_test:

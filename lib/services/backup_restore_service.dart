@@ -74,10 +74,11 @@ class BackupRestoreService {
         type: FileType.custom,
         allowedExtensions: ['db'],
         dialogTitle: 'Select Database Backup File',
+        lockParentWindow: true,
       );
 
       if (result == null || result.files.isEmpty) {
-        print('No file selected');
+        print('No file selected for restore');
         return false;
       }
 
@@ -91,7 +92,7 @@ class BackupRestoreService {
 
       // Verify the file exists
       if (!await backupFile.exists()) {
-        throw Exception('Backup file does not exist');
+        throw Exception('Backup file does not exist: ${pickedFile.path}');
       }
 
       // Verify file size (basic validation)
@@ -105,11 +106,13 @@ class BackupRestoreService {
       // Close any open database connections
       // This is important to prevent "database is locked" errors
       try {
-        final db = await DatabaseHelper().database;
-        await db.close();
+        await DatabaseHelper().database.then((db) => db.close());
       } catch (e) {
         print('Note: Could not close database (may already be closed): $e');
       }
+
+      // Small delay to ensure database is fully closed
+      await Future.delayed(const Duration(milliseconds: 500));
 
       // Get the database path
       final dbPath = await getDatabasesPath();
@@ -119,20 +122,32 @@ class BackupRestoreService {
       final currentDbFile = File(targetDbPath);
       if (await currentDbFile.exists()) {
         final emergencyBackupPath = path.join(dbPath, 'expense_tracker_emergency_backup.db');
-        await currentDbFile.copy(emergencyBackupPath);
-        print('Emergency backup created at: $emergencyBackupPath');
+        try {
+          await currentDbFile.copy(emergencyBackupPath);
+          print('Emergency backup created at: $emergencyBackupPath');
+        } catch (e) {
+          print('Warning: Could not create emergency backup: $e');
+        }
       }
 
       // Delete old database
       if (await currentDbFile.exists()) {
-        await currentDbFile.delete();
+        try {
+          await currentDbFile.delete();
+          print('Old database file deleted');
+        } catch (e) {
+          print('Warning: Could not delete old database: $e');
+        }
       }
 
       // Copy the backup file to database location
-      await backupFile.copy(targetDbPath);
+      try {
+        await backupFile.copy(targetDbPath);
+        print('Backup file copied to database location');
+      } catch (e) {
+        throw Exception('Failed to copy backup file: $e');
+      }
 
-      print('✓ Database restored successfully');
-      
       // Verify the restored database can be opened
       try {
         final restoredDb = await openDatabase(targetDbPath);
@@ -143,16 +158,35 @@ class BackupRestoreService {
         );
         
         if (tables.isEmpty) {
+          await restoredDb.close();
           throw Exception('Restored database does not contain transactions table');
         }
         
+        // Verify data integrity by checking a basic count
+        final countResult = await restoredDb.rawQuery('SELECT COUNT(*) as count FROM transactions');
+        final count = countResult.isNotEmpty ? countResult[0]['count'] as int : 0;
+        print('✓ Database verification successful - Found $count transactions');
+        
         await restoredDb.close();
-        print('✓ Database verification successful');
       } catch (e) {
         print('Error verifying restored database: $e');
-        throw Exception('Restored database is corrupted or invalid');
+        
+        // Try to restore from emergency backup if verification fails
+        final emergencyBackupPath = path.join(dbPath, 'expense_tracker_emergency_backup.db');
+        if (await File(emergencyBackupPath).exists()) {
+          print('Attempting to restore from emergency backup...');
+          try {
+            await File(emergencyBackupPath).copy(targetDbPath);
+            print('Emergency backup restored successfully');
+          } catch (restoreError) {
+            print('Failed to restore from emergency backup: $restoreError');
+          }
+        }
+        
+        throw Exception('Restored database is corrupted or invalid: ${e.toString()}');
       }
 
+      print('✓ Database restored successfully');
       return true;
     } catch (e) {
       print('Error importing database: $e');

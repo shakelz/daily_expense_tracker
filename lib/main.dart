@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import 'screens/home_page.dart';
+import 'screens/home_page_redesign.dart';
 import 'services/notification_helper.dart';
 import 'services/preferences_service.dart';
 import 'services/recurring_payment_service.dart';
@@ -26,23 +27,67 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Light theme with Material 3 design system
+    // Color palette: Pure White, Soft Grey, Professional Teal/Blue
+    const Color primaryTeal = Color(0xFF2B7A91);
+    const Color surfaceLight = Color(0xFFF8FAFB);
+    const Color white = Color(0xFFFFFFFF);
+    const Color grey = Color(0xFF6B7280);
+
     final colorScheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF7C4DFF),
-      brightness: Brightness.dark,
+      seedColor: primaryTeal,
+      brightness: Brightness.light,
+      surface: surfaceLight,
+      surfaceContainer: white,
+      primary: primaryTeal,
     );
 
     return MaterialApp(
-      title: 'My Expense Tracker',
+      title: 'Fiscus - money basket',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: colorScheme,
-        scaffoldBackgroundColor: const Color(0xFF0F1115),
-        cardColor: const Color(0xFF171A21),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0F1115),
-          foregroundColor: Colors.white,
+        scaffoldBackgroundColor: white,
+        cardColor: white,
+        textTheme: GoogleFonts.poppinsTextTheme(
+          ThemeData(brightness: Brightness.light).textTheme,
+        ).apply(
+          bodyColor: const Color(0xFF1F2937),
+          displayColor: const Color(0xFF1F2937),
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: white,
+          foregroundColor: const Color(0xFF1F2937),
           elevation: 0,
+          centerTitle: false,
+          titleTextStyle: GoogleFonts.poppins(
+            fontSize: 28,
+            fontWeight: FontWeight.bold,
+            color: const Color(0xFF1F2937),
+          ),
+        ),
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: primaryTeal,
+          foregroundColor: Colors.white,
+          elevation: 6,
+          shape: const CircleBorder(),
+        ),
+        cardTheme: CardThemeData(
+          color: white,
+          elevation: 2,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: surfaceLight,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
       ),
       home: const AuthGate(),
@@ -89,7 +134,7 @@ class _AuthGateState extends State<AuthGate> {
       if (authenticated) {
         // Navigate to HomePage
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => const HomePage()),
+          MaterialPageRoute(builder: (context) => const HomePageRedesign()),
         );
       } else {
         setState(() {

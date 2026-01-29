@@ -23,7 +23,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -47,6 +47,59 @@ class DatabaseHelper {
       );
       print('Database upgraded: recurring_payments table created');
     }
+    if (oldVersion < 3) {
+      // Create accounts table
+      await db.execute(
+        '''
+        CREATE TABLE IF NOT EXISTS accounts (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          balance REAL NOT NULL DEFAULT 0.0,
+          created_at TEXT NOT NULL
+        )
+        ''',
+      );
+      // Add account_id column to transactions table if not exists
+      await db.execute(
+        'ALTER TABLE transactions ADD COLUMN account_id INTEGER DEFAULT NULL'
+      );
+      print('Database upgraded: accounts table created and account_id added to transactions');
+    }
+    if (oldVersion < 4) {
+      // Add account_type column to accounts table
+      try {
+        await db.execute(
+          'ALTER TABLE accounts ADD COLUMN account_type TEXT DEFAULT "Bank"'
+        );
+      } catch (e) {
+        print('Column account_type already exists');
+      }
+      print('Database upgraded: account_type column added to accounts');
+    }
+    if (oldVersion < 5) {
+      // Create budgets table
+      await db.execute(
+        '''
+        CREATE TABLE IF NOT EXISTS budgets (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          category TEXT NOT NULL UNIQUE,
+          budget_amount REAL NOT NULL,
+          created_at TEXT NOT NULL
+        )
+        ''',
+      );
+      // Create overall monthly budget setting
+      await db.execute(
+        '''
+        CREATE TABLE IF NOT EXISTS monthly_budget (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          budget_amount REAL NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        ''',
+      );
+      print('Database upgraded: budgets and monthly_budget tables created');
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -58,11 +111,51 @@ class DatabaseHelper {
         amount REAL NOT NULL,
         category TEXT NOT NULL,
         date TEXT NOT NULL,
-        isIncome INTEGER NOT NULL
+        isIncome INTEGER NOT NULL,
+        account_id INTEGER
       )
       ''',
     );
     print('Database table "transactions" created');
+
+    // Create accounts table
+    await db.execute(
+      '''
+      CREATE TABLE accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        balance REAL NOT NULL DEFAULT 0.0,
+        account_type TEXT NOT NULL DEFAULT 'Bank',
+        created_at TEXT NOT NULL
+      )
+      ''',
+    );
+    print('Database table "accounts" created');
+
+    // Create budgets table
+    await db.execute(
+      '''
+      CREATE TABLE budgets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL UNIQUE,
+        budget_amount REAL NOT NULL,
+        created_at TEXT NOT NULL
+      )
+      ''',
+    );
+    print('Database table "budgets" created');
+
+    // Create overall monthly budget table
+    await db.execute(
+      '''
+      CREATE TABLE monthly_budget (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        budget_amount REAL NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+      ''',
+    );
+    print('Database table "monthly_budget" created');
 
     if (version >= 2) {
       await db.execute(
@@ -88,6 +181,7 @@ class DatabaseHelper {
     required String category,
     required String date,
     required bool isIncome,
+    int? accountId,
   }) async {
     final db = await database;
     final result = await db.insert(
@@ -98,8 +192,20 @@ class DatabaseHelper {
         'category': category,
         'date': date,
         'isIncome': isIncome ? 1 : 0,
+        'account_id': accountId,
       },
     );
+    
+    // Update account balance if accountId is provided
+    if (accountId != null) {
+      final balanceChange = isIncome ? amount : -amount;
+      await db.rawUpdate(
+        'UPDATE accounts SET balance = balance + ? WHERE id = ?',
+        [balanceChange, accountId],
+      );
+      print('Account $accountId balance updated by €$balanceChange');
+    }
+    
     print('Transaction inserted with ID: $result');
     return result;
   }
@@ -116,23 +222,32 @@ class DatabaseHelper {
     final whereArgs = <dynamic>[];
     
     if (searchQuery != null && searchQuery.isNotEmpty) {
-      whereConditions.add('title LIKE ?');
+      whereConditions.add('t.title LIKE ?');
       whereArgs.add('%$searchQuery%');
     }
     
     if (startDate != null && endDate != null) {
-      whereConditions.add('date(date) BETWEEN date(?) AND date(?)');
+      whereConditions.add('date(t.date) BETWEEN date(?) AND date(?)');
       whereArgs.add(startDate.toIso8601String());
       whereArgs.add(endDate.toIso8601String());
     }
+
+    final whereClause = whereConditions.isNotEmpty ? whereConditions.join(' AND ') : null;
     
-    final results = await db.query(
-      'transactions',
-      where: whereConditions.isNotEmpty ? whereConditions.join(' AND ') : null,
-      whereArgs: whereArgs.isNotEmpty ? whereArgs : null,
-      orderBy: 'date DESC',
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        t.*, 
+        COALESCE(a.name, 'No Account') as account_name,
+        COALESCE(a.account_type, 'Bank') as account_type
+      FROM transactions t
+      LEFT JOIN accounts a ON t.account_id = a.id
+      ${whereClause != null ? 'WHERE $whereClause' : ''}
+      ORDER BY t.date DESC
+      ''',
+      whereArgs,
     );
-    print('Fetched ${results.length} transactions from database');
+    print('Fetched ${results.length} transactions from database with account info');
     return results;
   }
 
@@ -163,6 +278,32 @@ class DatabaseHelper {
 
   Future<void> deleteTransaction(int id) async {
     final db = await database;
+    
+    // Get transaction details before deleting
+    final results = await db.query(
+      'transactions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    
+    if (results.isNotEmpty) {
+      final transaction = results.first;
+      final accountId = transaction['account_id'] as int?;
+      final amount = (transaction['amount'] as num).toDouble();
+      final isIncome = (transaction['isIncome'] as int) == 1;
+      
+      // Reverse the balance update if account exists
+      if (accountId != null) {
+        final balanceChange = isIncome ? -amount : amount;
+        await db.rawUpdate(
+          'UPDATE accounts SET balance = balance + ? WHERE id = ?',
+          [balanceChange, accountId],
+        );
+        print('Account $accountId balance reversed by €$balanceChange');
+      }
+    }
+    
+    // Delete the transaction
     await db.delete(
       'transactions',
       where: 'id = ?',
@@ -622,24 +763,32 @@ class DatabaseHelper {
   }) async {
     final db = await database;
     
-    String query = 'SELECT * FROM transactions WHERE 1=1';
+    String query = '''
+      SELECT 
+        t.*,
+        COALESCE(a.name, 'No Account') as account_name,
+        COALESCE(a.account_type, 'Bank') as account_type
+      FROM transactions t
+      LEFT JOIN accounts a ON t.account_id = a.id
+      WHERE 1=1
+    ''';
     final params = <dynamic>[];
     
     // Add date range filter if provided
     if (startDate != null && endDate != null) {
-      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      query += ' AND date(t.date) BETWEEN date(?) AND date(?)';
       params.add(startDate.toIso8601String());
       params.add(endDate.toIso8601String());
     }
     
     // Add category filter if provided
     if (category != null && category.isNotEmpty) {
-      query += ' AND category = ?';
+      query += ' AND t.category = ?';
       params.add(category);
     }
     
     // Sort by date DESC (newest first)
-    query += ' ORDER BY date DESC';
+    query += ' ORDER BY t.date DESC';
     
     final results = await db.rawQuery(query, params);
     
@@ -872,4 +1021,300 @@ class DatabaseHelper {
       'expense_percent_change': expensePercentChange,
     };
   }
+
+  // Account Management Methods
+  Future<int> addAccount({
+    required String name,
+    required double initialBalance,
+    required String accountType,
+  }) async {
+    final db = await database;
+    return await db.insert(
+      'accounts',
+      {
+        'name': name,
+        'balance': initialBalance,
+        'account_type': accountType,
+        'created_at': DateTime.now().toIso8601String(),
+      },
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAllAccounts() async {
+    final db = await database;
+    return await db.query(
+      'accounts',
+      orderBy: 'name ASC',
+    );
+  }
+
+  Future<Map<String, dynamic>?> getAccountById(int id) async {
+    final db = await database;
+    final results = await db.query(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    return results.isNotEmpty ? results.first : null;
+  }
+
+  Future<void> updateAccountBalance({
+    required int accountId,
+    required double newBalance,
+  }) async {
+    final db = await database;
+    await db.update(
+      'accounts',
+      {'balance': newBalance},
+      where: 'id = ?',
+      whereArgs: [accountId],
+    );
+  }
+
+  Future<void> deleteAccount(int id) async {
+    final db = await database;
+    await db.delete(
+      'accounts',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> updateAccount({
+    required int id,
+    required String name,
+    required double balance,
+    required String accountType,
+  }) async {
+    final db = await database;
+    await db.update(
+      'accounts',
+      {
+        'name': name,
+        'balance': balance,
+        'account_type': accountType,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<double> getTotalBalanceByType(String accountType) async {
+    final db = await database;
+    final results = await db.rawQuery(
+      'SELECT SUM(balance) as total FROM accounts WHERE account_type = ?',
+      [accountType],
+    );
+    if (results.isNotEmpty) {
+      return ((results.first['total'] ?? 0) as num).toDouble();
+    }
+    return 0.0;
+  }
+
+  /// Get spending by source (account name)
+  /// Returns list of {account_name, account_type, total_expense} for all expenses
+  Future<List<Map<String, dynamic>>> getSpendingBySource() async {
+    final db = await database;
+    final results = await db.rawQuery(
+      '''
+      SELECT 
+        a.name as account_name,
+        a.account_type,
+        SUM(t.amount) as total_expense,
+        COUNT(t.id) as transaction_count
+      FROM transactions t
+      LEFT JOIN accounts a ON t.account_id = a.id
+      WHERE t.isIncome = 0
+      GROUP BY t.account_id
+      ORDER BY total_expense DESC
+      ''',
+    );
+    
+    print('Fetched spending by source: ${results.length} accounts');
+    return results;
+  }
+
+  /// Get spending by source for a specific date range
+  Future<List<Map<String, dynamic>>> getSpendingBySourceFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT 
+        a.name as account_name,
+        a.account_type,
+        SUM(t.amount) as total_expense,
+        COUNT(t.id) as transaction_count
+      FROM transactions t
+      LEFT JOIN accounts a ON t.account_id = a.id
+      WHERE t.isIncome = 0
+    ''';
+    final params = <dynamic>[];
+    
+    if (startDate != null && endDate != null) {
+      query += ' AND date(t.date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    query += ' GROUP BY t.account_id ORDER BY total_expense DESC';
+    
+    final results = await db.rawQuery(query, params);
+    print('Fetched filtered spending by source: ${results.length} accounts');
+    return results;
+  }
+
+  // ============ Budget Operations ============
+
+  /// Get monthly budget (overall limit)
+  Future<double> getMonthlyBudget() async {
+    final db = await database;
+    final results = await db.query('monthly_budget', where: 'id = 1');
+    if (results.isNotEmpty) {
+      return (results.first['budget_amount'] as num).toDouble();
+    }
+    return 5000.0; // Default budget
+  }
+
+  /// Set monthly budget
+  Future<void> setMonthlyBudget(double amount) async {
+    final db = await database;
+    await db.insert(
+      'monthly_budget',
+      {
+        'id': 1,
+        'budget_amount': amount,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    print('Monthly budget set to €$amount');
+  }
+
+  /// Get all category budgets
+  Future<List<Map<String, dynamic>>> getAllCategoryBudgets() async {
+    final db = await database;
+    final results = await db.query('budgets', orderBy: 'category ASC');
+    return results;
+  }
+
+  /// Get budget for specific category
+  Future<double?> getCategoryBudget(String category) async {
+    final db = await database;
+    final results = await db.query(
+      'budgets',
+      where: 'category = ?',
+      whereArgs: [category],
+    );
+    if (results.isNotEmpty) {
+      return (results.first['budget_amount'] as num).toDouble();
+    }
+    return null;
+  }
+
+  /// Set category budget (insert or update)
+  Future<void> setCategoryBudget(String category, double amount) async {
+    final db = await database;
+    await db.insert(
+      'budgets',
+      {
+        'category': category,
+        'budget_amount': amount,
+        'created_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    print('Budget for $category set to €$amount');
+  }
+
+  /// Delete category budget
+  Future<void> deleteCategoryBudget(String category) async {
+    final db = await database;
+    await db.delete('budgets', where: 'category = ?', whereArgs: [category]);
+    print('Budget for $category deleted');
+  }
+
+  /// Get all categories that have budgets
+  Future<List<String>> getBudgetedCategories() async {
+    final db = await database;
+    final results = await db.query('budgets', columns: ['category']);
+    return results.map((row) => row['category'] as String).toList();
+  }
+
+  /// Get spending by day filtered by date range
+  Future<Map<String, double>> getSpendingByDayFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT 
+        date(date) as day,
+        SUM(amount) as total
+      FROM transactions
+      WHERE isIncome = 0
+    ''';
+    final params = <dynamic>[];
+    
+    if (startDate != null && endDate != null) {
+      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    query += ' GROUP BY day ORDER BY day ASC';
+    
+    final results = await db.rawQuery(query, params);
+    
+    final dailyMap = <String, double>{};
+    for (final row in results) {
+      final day = row['day'] as String;
+      final total = ((row['total'] ?? 0) as num).toDouble();
+      dailyMap[day] = total;
+    }
+    
+    print('Fetched filtered daily spending: ${results.length} days with data');
+    return dailyMap;
+  }
+
+  /// Get spending by month filtered by date range
+  Future<Map<String, double>> getSpendingByMonthFiltered({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final db = await database;
+    
+    String query = '''
+      SELECT 
+        strftime('%Y-%m', date) as month,
+        SUM(amount) as total
+      FROM transactions
+      WHERE isIncome = 0
+    ''';
+    final params = <dynamic>[];
+    
+    if (startDate != null && endDate != null) {
+      query += ' AND date(date) BETWEEN date(?) AND date(?)';
+      params.add(startDate.toIso8601String());
+      params.add(endDate.toIso8601String());
+    }
+    
+    query += ' GROUP BY month ORDER BY month ASC';
+    
+    final results = await db.rawQuery(query, params);
+    
+    final monthlyMap = <String, double>{};
+    for (final row in results) {
+      final month = row['month'] as String;
+      final total = ((row['total'] ?? 0) as num).toDouble();
+      monthlyMap[month] = total;
+    }
+    
+    print('Fetched filtered monthly spending: ${results.length} months with data');
+    return monthlyMap;
+  }
 }
+

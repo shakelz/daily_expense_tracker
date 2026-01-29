@@ -257,3 +257,36 @@ class _AuthGateState extends State<AuthGate> {
     );
   }
 }
+
+/// Overlay entry point for floating bubble window
+@pragma("vm:entry-point")
+void overlayMain() {
+  runApp(
+    MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: Colors.transparent,
+        body: Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF2B7A91),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF2B7A91).withOpacity(0.4),
+                blurRadius: 8,
+                spreadRadius: 2,
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Icon(
+              Icons.add_circle_outline,
+              color: Colors.white,
+              size: 48,
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}

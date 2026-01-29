@@ -38,6 +38,13 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
+        <!-- Overlay window service configuration -->
+        <service
+            android:name="com.flutter.floatingbubble.overlay.OverlayService"
+            android:enabled="true"
+            android:foreground="true"
+            android:exported="false" />
+        
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

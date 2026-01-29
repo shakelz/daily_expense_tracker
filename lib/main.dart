@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/home_page_redesign.dart';
+import 'services/bubble_manager.dart';
 import 'services/notification_helper.dart';
 import 'services/preferences_service.dart';
 import 'services/recurring_payment_service.dart';

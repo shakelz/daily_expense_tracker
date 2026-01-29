@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../bubble_overlay.dart';
 import '../models/expense_entry.dart';
+import '../services/bubble_manager.dart';
 import '../services/database_helper.dart';
 import '../widgets/floating_transaction_form.dart';
 import 'account_management_screen.dart';
@@ -18,9 +20,10 @@ class HomePageRedesign extends StatefulWidget {
 }
 
 class _HomePageRedesignState extends State<HomePageRedesign>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   int _selectedNavIndex = 0;
+  final BubbleManager _bubbleManager = BubbleManager();
   
   // Color constants
   static const Color primaryTeal = Color(0xFF2B7A91);
@@ -34,27 +37,47 @@ class _HomePageRedesignState extends State<HomePageRedesign>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    switch (state) {
+      case AppLifecycleState.paused:
+        // App is backgrounded - show the bubble for quick access
+        _bubbleManager.showBubble();
+        debugPrint('=== APP PAUSED ===\nBubble shown on homescreen\n===============\n');
+      case AppLifecycleState.resumed:
+        // App is resumed - hide the bubble
+        _bubbleManager.hideBubble();
+        debugPrint('=== APP RESUMED ===\nBubble hidden\n================\n');
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        // Handle other states if needed
+        break;
+    }
   }
 
   void _openTransactionForm() {
     showDialog(
       context: context,
-      builder: (context) => FloatingTransactionForm(
-        autofocusAmount: true,
-        onSave: () {
-          if (mounted) {
-            setState(() {});
-          }
-        },
-      ),
-    );
+      builder: (context) => const TransactionBubbleForm(),
+    ).then((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override

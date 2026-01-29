@@ -38,15 +38,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
         
-        <!-- Bubble Service with special use foreground service type -->
-        <service
-            android:name="dev.moaz.dash_bubble.src.BubbleService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Floating transaction bubble" />
-        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

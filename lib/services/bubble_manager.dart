@@ -28,7 +28,6 @@ class BubbleManager {
         height: 120,
         width: 120,
         alignment: OverlayAlignment.bottomRight,
-        margin: 10,
       );
 
       _isBubbleVisible = true;

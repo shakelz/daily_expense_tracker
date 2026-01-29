@@ -82,7 +82,11 @@ class _TransactionBubbleFormState extends State<TransactionBubbleForm> {
 
       _showSuccessSnackbar('Transaction added successfully!');
       _clearForm();
-      Navigator.pop(context);
+      
+      // Check if widget is still mounted before navigating
+      if (mounted) {
+        Navigator.pop(context);
+      }
     } catch (e) {
       _showErrorSnackbar('Invalid amount. Please enter a valid number.');
     }

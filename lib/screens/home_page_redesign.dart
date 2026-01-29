@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../bubble_overlay.dart';
 import '../models/expense_entry.dart';
 import '../services/bubble_manager.dart';
 import '../services/database_helper.dart';
+import '../widgets/floating_transaction_form.dart';
 import 'account_management_screen.dart';
 import 'all_transactions_screen.dart';
 import 'analysis_tab.dart';
@@ -76,12 +76,18 @@ class _HomePageRedesignState extends State<HomePageRedesign>
   void _openTransactionForm() {
     showDialog(
       context: context,
-      builder: (context) => const TransactionBubbleForm(),
-    ).then((_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
+      barrierColor: Colors.transparent,
+      builder: (context) => FloatingTransactionForm(
+        onClose: () {
+          Navigator.of(context).pop();
+        },
+        onSave: () {
+          if (mounted) {
+            setState(() {});
+          }
+        },
+      ),
+    );
   }
 
   @override
